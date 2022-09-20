@@ -145,9 +145,9 @@ class DroneVeichleDataset(Dataset):
                 t_img = torch.from_numpy(t_img).type(torch.FloatTensor).unsqueeze(dim=0)
                 shape_mask = torch.from_numpy(shape_mask).type(torch.FloatTensor).unsqueeze(dim=0)
             else:
-                img =  torch.from_numpy(img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(1,3,1,1)
-                t_img = torch.from_numpy(t_img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(1,3,1,1)
-                shape_mask = torch.from_numpy(shape_mask).type(torch.FloatTensor).unsqueeze(dim=0).repeat(1,3,1,1)
+                img =  torch.from_numpy(img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
+                t_img = torch.from_numpy(t_img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
+                shape_mask = torch.from_numpy(shape_mask).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
 
             return img, \
                 t_img, \

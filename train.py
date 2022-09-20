@@ -26,13 +26,13 @@ def train(args):
         syn_loader = DataLoader(syn_dataset, batch_size=args.batch_size, shuffle=True)
         syneval_dataset = DroneVeichleDataset(split='val', colored_data=args.color_images)
     else:
+        idx = 0
         syn_dataset = DroneVeichleDataset(to_be_loaded=True)
-        syn_dataset.load_dataset("dataset/tensors",split="train", idx="0", img_size=args.img_size, colored_data=args.color_images)
+        syn_dataset.load_dataset("dataset/tensors",split="train", idx=str(idx), img_size=args.img_size, colored_data=args.color_images)
         syn_loader = DataLoader(syn_dataset, batch_size=args.batch_size, shuffle=True)
 
         syneval_dataset = DroneVeichleDataset(to_be_loaded=True)
-        syneval_dataset.load_dataset("dataset/tensors",split="val", idx="0", img_size=args.img_size, colored_data=args.color_images)
-        idx = 0
+        syneval_dataset.load_dataset("dataset/tensors",split="val", idx=str(idx), img_size=args.img_size, colored_data=args.color_images)
 
     in_c = 1 if not args.color_images else 3
     netG = Generator(in_c= in_c + args.c_dim, mid_c=args.G_conv, layers =2, s_layers=3, affine=True, last_ac=True,
@@ -281,7 +281,7 @@ def train(args):
                 idx = idx+1 if (idx+1) <18 else 0
                 print("loading dataset ", idx)
                 syn_dataset = DroneVeichleDataset(to_be_loaded=True)
-                syn_dataset.load_dataset("dataset/tensors",split="train", idx=str(idx), img_size=args.img_size)
+                syn_dataset.load_dataset("dataset/tensors",split="train", idx=str(idx), img_size=args.img_size, colored_data=args.color_images)
                 syn_loader = DataLoader(syn_dataset, batch_size=args.batch_size, shuffle=True)
 
 
