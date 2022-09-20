@@ -22,22 +22,24 @@ def train(args):
 
     # set_seed(args.random_seed)
     if not args.preloaded_data:
-        syn_dataset = DroneVeichleDataset(split='train')
+        syn_dataset = DroneVeichleDataset(split='train', colored_data=args.color_images)
         syn_loader = DataLoader(syn_dataset, batch_size=args.batch_size, shuffle=True)
-        syneval_dataset = DroneVeichleDataset(split='val')
+        syneval_dataset = DroneVeichleDataset(split='val', colored_data=args.color_images)
     else:
         syn_dataset = DroneVeichleDataset(to_be_loaded=True)
-        syn_dataset.load_dataset("dataset/tensors",split="train", idx="0", img_size=args.img_size)
+        syn_dataset.load_dataset("dataset/tensors",split="train", idx="0", img_size=args.img_size, colored_data=args.color_images)
         syn_loader = DataLoader(syn_dataset, batch_size=args.batch_size, shuffle=True)
 
         syneval_dataset = DroneVeichleDataset(to_be_loaded=True)
-        syneval_dataset.load_dataset("dataset/tensors",split="val", idx="0", img_size=args.img_size)
+        syneval_dataset.load_dataset("dataset/tensors",split="val", idx="0", img_size=args.img_size, colored_data=args.color_images)
         idx = 0
 
-    netG = Generator(1 + args.c_dim, args.G_conv, 2, 3, True, True)
-    netH = ShapeUNet(img_ch=1, mid=args.h_conv)
-    netD_i = Discriminator(c_dim=args.c_dim * 2, image_size=args.img_size)
-    netD_t = Discriminator(c_dim=args.c_dim * 2, image_size=args.img_size)
+    in_c = 1 if not args.color_images else 3
+    netG = Generator(in_c= in_c + args.c_dim, mid_c=args.G_conv, layers =2, s_layers=3, affine=True, last_ac=True,
+                        colored_input=args.color_images)
+    netH = ShapeUNet(img_ch=in_c, output_ch=1, mid=args.h_conv)
+    netD_i = Discriminator(c_dim=args.c_dim * 2, image_size=args.img_size, colored_input=args.color_images)
+    netD_t = Discriminator(c_dim=args.c_dim * 2, image_size=args.img_size, colored_input=args.color_images)
 
 
     g_optimizier = torch.optim.Adam(netG.parameters(), lr=glr, betas=(args.betas[0], args.betas[1]))
@@ -301,12 +303,14 @@ if __name__ == '__main__':
     parser.add_argument('-datasets', type=str, default='droneveichle')
     parser.add_argument('-experiment_name', type=str, default='testing')
     parser.add_argument('-save_path', type=str, default='s3m-gan-chaos-v1.0')
+    
     parser.add_argument('-batch_size', type=int, default=4)
     parser.add_argument('-img_size', type=int, default=128)
     parser.add_argument('-gan_version', type=str, default='Generator[2/3]+shapeunet+D')
     parser.add_argument('-epoch', type=int, default=50)
     parser.add_argument('-sepoch', type=int, default=0)
     parser.add_argument('-preloaded_data', type=bool, default=False)
+    parser.add_argument('-color_images', type=bool, default=False)
     parser.add_argument('-modals', type=tuple, )
     parser.add_argument('-lr', type=float, default=1e-4)
     parser.add_argument('-loss_function', type=str, default='wgan-gp+move+cycle+ugan+d+l2')

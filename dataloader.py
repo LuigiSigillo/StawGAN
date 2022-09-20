@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from turtle import shape
 from torch.utils.data import Dataset, DataLoader
 import os
 import numpy as np
@@ -12,7 +13,7 @@ import torchvision as tv
 grayscale = tv.transforms.Grayscale(num_output_channels=1)
 
 class DroneVeichleDataset(Dataset):
-    def __init__(self,path="dataset", split='train', modals=('img','imgr'),transforms=None, img_size=128, to_be_loaded=False):
+    def __init__(self,path="dataset", split='train', modals=('img','imgr'),transforms=None, img_size=128, to_be_loaded=False, colored_data=False):
         super(DroneVeichleDataset, self).__init__()
         
         if not to_be_loaded:
@@ -89,10 +90,11 @@ class DroneVeichleDataset(Dataset):
 
 
             self.split = split
+            self.colored_data = colored_data
             assert len(self.raw_dataset) == len(self.label_dataset)
             print("DroneVeichle "+ split+ " data load success!")
             print("total size:{}".format(len(self.raw_dataset)))
-
+            
     def __getitem__(self, item):
         img, shape_mask, class_label, seg_mask = self.raw_dataset[item][0][0],\
                                                  self.raw_dataset[item][0][1], \
@@ -124,26 +126,43 @@ class DroneVeichleDataset(Dataset):
         t_img = (t_img - 0.5) / 0.5
 
         if len(img.shape)>2:
-            return grayscale(torch.from_numpy(img).type(torch.FloatTensor).permute(2, 0, 1)), \
-                grayscale(torch.from_numpy(t_img).type(torch.FloatTensor).permute(2, 0, 1)), \
-                grayscale(torch.from_numpy(shape_mask).type(torch.FloatTensor).permute(2, 0, 1)), \
+            if not self.colored_data:
+                img = grayscale(torch.from_numpy(img).type(torch.FloatTensor).permute(2, 0, 1))
+                t_img = grayscale(torch.from_numpy(t_img).type(torch.FloatTensor).permute(2, 0, 1))
+                shape_mask = grayscale(torch.from_numpy(shape_mask).type(torch.FloatTensor).permute(2, 0, 1))
+            else:
+                img, t_img, shape_mask = torch.from_numpy(img).type(torch.FloatTensor).permute(2, 0, 1), \
+                    torch.from_numpy(t_img).type(torch.FloatTensor).permute(2, 0, 1), \
+                    torch.from_numpy(shape_mask).type(torch.FloatTensor).permute(2, 0, 1)
+            return img, \
+                t_img , \
+                shape_mask, \
                 torch.from_numpy(seg_mask).type(torch.LongTensor).unsqueeze(dim=0), \
                 torch.from_numpy(class_label).type(torch.FloatTensor)
         else:
-            return torch.from_numpy(img).type(torch.FloatTensor).unsqueeze(dim=0), \
-                torch.from_numpy(t_img).type(torch.FloatTensor).unsqueeze(dim=0), \
-                torch.from_numpy(shape_mask).type(torch.FloatTensor).unsqueeze(dim=0), \
+            if not self.colored_data:
+                img = torch.from_numpy(img).type(torch.FloatTensor).unsqueeze(dim=0)
+                t_img = torch.from_numpy(t_img).type(torch.FloatTensor).unsqueeze(dim=0)
+                shape_mask = torch.from_numpy(shape_mask).type(torch.FloatTensor).unsqueeze(dim=0)
+            else:
+                img =  torch.from_numpy(img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(1,3,1,1)
+                t_img = torch.from_numpy(t_img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(1,3,1,1)
+                shape_mask = torch.from_numpy(shape_mask).type(torch.FloatTensor).unsqueeze(dim=0).repeat(1,3,1,1)
+
+            return img, \
+                t_img, \
+                shape_mask, \
                 torch.from_numpy(seg_mask).type(torch.LongTensor).unsqueeze(dim=0), \
                 torch.from_numpy(class_label).type(torch.FloatTensor)
     def __len__(self):
         return len(self.raw_dataset)
 
-    def load_dataset(self, my_folder="dataset", split='train', idx = "0", img_size=128):
+    def load_dataset(self, my_folder="dataset", split='train', idx = "0", img_size=128, colored_data = False):
         self.label_dataset = torch.load(f"{my_folder}/{idx}_{split}_label_dataset.pt")
         self.raw_dataset = torch.load(f"{my_folder}/{idx}_{split}_raw_dataset.pt")
         self.img_size = img_size
         self.split=split
-
+        self.colored_data = colored_data
 
 
 def label_preprocess(data):

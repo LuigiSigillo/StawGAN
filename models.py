@@ -132,15 +132,15 @@ class Decoder(nn.Module):
 class Generator(nn.Module):
     # the G of TarGAN
 
-    def __init__(self, in_c, mid_c, layers, s_layers, affine, last_ac=True):
+    def __init__(self, in_c, mid_c, layers, s_layers, affine, last_ac=True, colored_input=False):
         super(Generator, self).__init__()
         self.img_encoder = Encoder(in_c, mid_c, layers, affine)
         self.img_decoder = Decoder(mid_c * (2 ** layers), mid_c * (2 ** (layers - 1)), layers, affine,64)
         self.target_encoder = Encoder(in_c, mid_c, layers, affine)
         self.target_decoder = Decoder(mid_c * (2 ** layers), mid_c * (2 ** (layers - 1)), layers, affine,64)
         self.share_net = ShareNet(mid_c * (2 ** (layers - 1)), mid_c * (2 ** (layers - 1 + s_layers)), s_layers, affine,256)
-        self.out_img = nn.Conv2d(mid_c, 1, 1, bias=bias)
-        self.out_tumor = nn.Conv2d(mid_c, 1, 1, bias=bias)
+        self.out_img = nn.Conv2d(mid_c, 1 if not colored_input else 3, 1, bias=bias)
+        self.out_tumor = nn.Conv2d(mid_c, 1 if not colored_input else 3, 1, bias=bias)
         self.last_ac = last_ac
 
     def forward(self, img, tumor=None, c=None, mode="train"):
@@ -166,10 +166,10 @@ class Generator(nn.Module):
 class Discriminator(nn.Module):
     # the D_x or D_r of TarGAN ( backbone of PatchGAN )
 
-    def __init__(self, image_size=265, conv_dim=64, c_dim=5, repeat_num=6):
+    def __init__(self, image_size=265, conv_dim=64, c_dim=5, repeat_num=6, colored_input=False):
         super(Discriminator, self).__init__()
         layers = []
-        layers.append(nn.Conv2d(1, conv_dim, kernel_size=4, stride=2, padding=1))
+        layers.append(nn.Conv2d(1 if not colored_input else 3, conv_dim, kernel_size=4, stride=2, padding=1))
         layers.append(nn.LeakyReLU(0.01))
 
         curr_dim = conv_dim

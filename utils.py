@@ -93,7 +93,7 @@ def moving_average(model, model_test, beta=0.999):
 
 def plot_images(netG_use, syneval_dataset, device, c_dim):
     # fig = plt.figure(dpi=120)
-    idx = random.randint(0,1400)
+    idx = random.randint(0,200)
     with torch.no_grad():
         img = syneval_dataset[idx][0]
         trg_segm = syneval_dataset[idx][3]
