@@ -230,7 +230,7 @@ class DroneVeichleDatasetPreTraining(Dataset):
         list_path = sorted([os.path.join(path1, x) for x in os.listdir(path1)]) + sorted([os.path.join(path2, x) for x in os.listdir(path2)])
         raw_path = [] #contains RGB image real
         # print(len(list_path), list_path[200])
-        for x in list_path:
+        for x in list_path[15000:17000]:
 
             if split+"imgr" in x:
                 c = np.array(0) #infrared
@@ -243,8 +243,7 @@ class DroneVeichleDatasetPreTraining(Dataset):
             raw_path.append([x,c])
             
         #########
-        self.raw_dataset = []
-        self.label_dataset = []
+        self.dataset = []
         #######
         self.transfroms = transforms
 
@@ -257,7 +256,7 @@ class DroneVeichleDatasetPreTraining(Dataset):
             # img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
             #lasciamo qui sotto?????
             img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
-            img, _ = raw_preprocess(img, True)
+            img = raw_preprocess(img )
 
             #?????
             if c==0:
@@ -273,20 +272,20 @@ class DroneVeichleDatasetPreTraining(Dataset):
             # convert image to numpy array
             img_2 = np.asarray(img_2)
             img_2 = cv2.resize(img_2, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
-            img_2,_ = raw_preprocess(img_2)
+            img_2 = raw_preprocess(img_2)
             if irr:
-                self.dataset.append((img,img_2))
+                self.dataset.append((img, img_2, np.array(1)))
             else:
-                self.dataset.append((img_2,img))
+                self.dataset.append((img_2, img, np.array(1)))
             irr = False
 
         self.split = split
         self.colored_data = colored_data
         print("DroneVeichle "+ split+ " data load success!")
-        print("total size:{}".format(len(self.raw_dataset)))
+        print("total size:{}".format(len(self.dataset)))
             
     def __getitem__(self, item):
-        img, img_2 = self.raw_dataset[item][0], self.raw_dataset[item][1]
+        img, img_2 = self.dataset[item][0], self.dataset[item][1]
 
         if img.shape[0]!=self.img_size:
             img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
@@ -308,7 +307,7 @@ class DroneVeichleDatasetPreTraining(Dataset):
         return img, img_2
 
     def __len__(self):
-        return len(self.raw_dataset)
+        return len(self.dataset)
 
     def load_dataset(self, my_folder="dataset", split='train', idx = "0", img_size=128, colored_data = False):
         self.label_dataset = torch.load(f"{my_folder}/{idx}_{split}_label_dataset.pt")
