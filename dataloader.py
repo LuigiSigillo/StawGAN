@@ -218,6 +218,104 @@ def denorm(x):
 
 
 
+class DroneVeichleDatasetPreTraining(Dataset):
+    def __init__(self,path="dataset", split='train', modals=('img','imgr'),transforms=None, img_size=128, to_be_loaded=False, colored_data=False):
+        super(DroneVeichleDatasetPreTraining, self).__init__()
+        
+        box = (100, 100, 740, 612)
+        self.img_size = img_size
+        fold = split + "/"
+        path1 = os.path.join(path, fold+ split+modals[0])
+        path2 = os.path.join(path, fold + split+modals[1])
+        list_path = sorted([os.path.join(path1, x) for x in os.listdir(path1)]) + sorted([os.path.join(path2, x) for x in os.listdir(path2)])
+        raw_path = [] #contains RGB image real
+        # print(len(list_path), list_path[200])
+        for x in list_path:
+
+            if split+"imgr" in x:
+                c = np.array(0) #infrared
+                # tmp =  x.replace(split+"imgr",split+"masksr")
+            elif split+"img" in x:
+                c = np.array(1)
+                # tmp =  x.replace(split+"img",split+"masks")
+            else:
+                raise Exception('wrong path probably')
+            raw_path.append([x,c])
+            
+        #########
+        self.raw_dataset = []
+        self.label_dataset = []
+        #######
+        self.transfroms = transforms
+
+        for i,c in tqdm(raw_path): 
+            img = Image.open(i)
+            img = img.crop(box)
+
+            # convert image to numpy array
+            img = np.asarray(img)
+            # img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
+            #lasciamo qui sotto?????
+            img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
+            img, _ = raw_preprocess(img, True)
+
+            #?????
+            if c==0:
+                a = i.replace(split+"imgr",split+"img")
+                irr = True
+            else:
+                a = i.replace(split+"img",split+"imgr")
+                irr = False
+
+            img_2 = Image.open(a)
+            img_2 = img_2.crop(box)
+
+            # convert image to numpy array
+            img_2 = np.asarray(img_2)
+            img_2 = cv2.resize(img_2, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
+            img_2,_ = raw_preprocess(img_2)
+            if irr:
+                self.dataset.append((img,img_2))
+            else:
+                self.dataset.append((img_2,img))
+            irr = False
+
+        self.split = split
+        self.colored_data = colored_data
+        print("DroneVeichle "+ split+ " data load success!")
+        print("total size:{}".format(len(self.raw_dataset)))
+            
+    def __getitem__(self, item):
+        img, img_2 = self.raw_dataset[item][0], self.raw_dataset[item][1]
+
+        if img.shape[0]!=self.img_size:
+            img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
+            img_2 = cv2.resize(img_2, (self.img_size, self.img_size), interpolation=cv2.INTER_NEAREST)
+        
+        #trhee channels for seg mask
+        # print(seg_mask.shape, img.shape)
+        
+        if self.split == 'train':
+            if random.random() > 0.5:
+                img = cv2.flip(img, 1)
+                img_2 = cv2.flip(img_2, 1)
+        #  scale to [-1,1]
+        img = (img - 0.5) / 0.5
+        img_2 = (img_2 - 0.5) / 0.5
+
+        img = torch.from_numpy(img).type(torch.FloatTensor).permute(2, 0, 1)
+        img_2 = grayscale(torch.from_numpy(img_2).type(torch.FloatTensor).permute(2, 0, 1))
+        return img, img_2
+
+    def __len__(self):
+        return len(self.raw_dataset)
+
+    def load_dataset(self, my_folder="dataset", split='train', idx = "0", img_size=128, colored_data = False):
+        self.label_dataset = torch.load(f"{my_folder}/{idx}_{split}_label_dataset.pt")
+        self.raw_dataset = torch.load(f"{my_folder}/{idx}_{split}_raw_dataset.pt")
+        self.img_size = img_size
+        self.split=split
+        self.colored_data = colored_data
 
 
 # dt = DroneVeichleDataset(split="val")

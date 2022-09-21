@@ -75,7 +75,7 @@ def train(args):
                 d_org = label2onehot(label_org, args.c_dim * 2)
                 g_trg = label2onehot(label_trg, args.c_dim * 2)
                 # plt.subplot(231)
-                # plt.imshow(  x_real[2].cpu().detach().permute(1, 2, 0).numpy()  )
+                # plt.imshow(  [x_real[2].cpu().detach().permute(1, 2, 0).numpy()  )
                 x_real = x_real.to(device)  # Input images.
 
                 c_org = c_org.to(device)  # Original domain labels.
