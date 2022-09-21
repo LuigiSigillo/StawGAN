@@ -27,6 +27,7 @@ def train(args):
         syneval_dataset = DroneVeichleDataset(split='val', colored_data=args.color_images)
     else:
         idx = 0
+        args.epoch= 10*args.epoch
         syn_dataset = DroneVeichleDataset(to_be_loaded=True)
         syn_dataset.load_dataset("dataset/tensors",split="train", idx=str(idx), img_size=args.img_size, colored_data=args.color_images)
         syn_loader = DataLoader(syn_dataset, batch_size=args.batch_size, shuffle=True)
@@ -302,9 +303,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-datasets', type=str, default='droneveichle')
     parser.add_argument('-experiment_name', type=str, default='testing')
-    parser.add_argument('-save_path', type=str, default='s3m-gan-chaos-v1.0')
-    
-    parser.add_argument('-batch_size', type=int, default=4)
+    parser.add_argument('-save_path', type=str, default='checkpoints')
+    parser.add_argument('-batch_size', type=int, default=12)
     parser.add_argument('-img_size', type=int, default=128)
     parser.add_argument('-gan_version', type=str, default='Generator[2/3]+shapeunet+D')
     parser.add_argument('-epoch', type=int, default=50)
@@ -312,7 +312,7 @@ if __name__ == '__main__':
     parser.add_argument('-preloaded_data', type=bool, default=False)
     parser.add_argument('-color_images', type=bool, default=False)
     parser.add_argument('-modals', type=tuple, )
-    parser.add_argument('-lr', type=float, default=1e-4)
+    parser.add_argument('-lr', type=float, default=1e-6)
     parser.add_argument('-loss_function', type=str, default='wgan-gp+move+cycle+ugan+d+l2')
     parser.add_argument('-optimizer', type=str, default='adam')
     parser.add_argument('-note', type=str,default='affine:True;')

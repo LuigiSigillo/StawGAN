@@ -59,23 +59,23 @@ def gradient_penalty(y, x, device):
     return torch.mean((dydx_l2norm - 1) ** 2)
 
 
-def save_state_net(net, parameters, index, optim=None, experiment_name="test", parents_root='checkpoints/MICCAI2021'):
-    save_path = os.path.join(parameters.save_path, parents_root)
+def save_state_net(net, args, index, optim=None, experiment_name="test"):
+    save_path = os.path.join(args.save_path, args.experiment_name)
     if not os.path.isdir(save_path):
         os.mkdir(save_path)
-    save_file = os.path.join(save_path, parameters.net_name)
+    save_file = os.path.join(save_path, args.net_name)
     torch.save(net.state_dict(), save_file + '_' + str(index) +"_"+experiment_name + '.pkl')
     if optim is not None:
         torch.save(optim.state_dict(), save_file + '_optim_' + str(index)+ "_" + experiment_name + '.pkl')
     if not os.path.isfile(save_path + '/outputs.txt'):
         with open(save_path + '/outputs.txt', mode='w') as f:
-            argsDict = parameters.__dict__;
-            f.writelines(parameters.note + '\n')
+            argsDict = args.__dict__;
+            f.writelines(args.note + '\n')
             for i in argsDict.keys():
                 f.writelines(str(i) + ' : ' + str(argsDict[i]) + '\n')
 
-def load_state_net(net, net_name, index, optim=None, experiment_name="", parents_root='checkpoints/MICCAI2021', device="cpu"):
-    save_path = os.path.join(save_path, parents_root)
+def load_state_net(net, net_name, index, optim=None, experiment_name="", device="cpu"):
+    save_path = os.path.join(save_path, experiment_name)
     if not os.path.isdir(save_path):
         raise Exception("wrong path")
     save_file = os.path.join(save_path, net_name)
