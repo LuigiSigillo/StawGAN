@@ -8,10 +8,10 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import torch.nn.functional as F
 import wandb
-from dataloader import DefaultDataset
-from utils import getLabel, save_image
+from dataloader import DefaultDataset, DroneVeichleDataset
+from utils import getLabel, label2onehot, save_image
 
-from models import LPIPS
+from models import LPIPS, InceptionV3
 import numpy as np
 import glob
 import cv2
@@ -19,17 +19,20 @@ from scipy import linalg
 import subprocess
 from ignite.metrics import FID, InceptionScore
 
+device = "cpu"
+
 #TODO check path
 def calculate_pytorch_fid(args):
     path_real = [args.dataset_path + "/train/trainimg", args.dataset_path + "/train/trainimgr"]
-    eval_root = args.dataset_path + "/val/"
+    eval_root = args.eval_dir
     fid_scores = {}
     for p in path_real:
-        mod = [m for m in args.modals if m != p[-2:]]
+        mod = [m for m in args.modals if m != p[-8:]]
+        print(mod)
         ls = 0
         for src in mod:
-            print("evaluating " + src + " to " + p[-2:])
-            eval_path = eval_root + src + " to " + p[-2:]
+            print("evaluating " + src + " to " + p[-3:])
+            eval_path = eval_root +"/"+ src + " to " + p[-3:]
             dev = "cuda" if torch.cuda.is_available() else "cpu"
             x = str(subprocess.check_output(f'python -m pytorch_fid "{p}" "{eval_path}" --device {dev} --batch-size {args.eval_batch_size}',
                 shell=True))
@@ -74,17 +77,18 @@ def inception_score_ignite(pred):
 
 
 
-def calculate_ignite_fid():
-    path_real = [args.dataset_path + "png8020/train/ct", args.dataset_path + "png8020/train/t1",
-                 args.dataset_path + "png8020/train/t2"]
-    eval_root = "eval/"
+def calculate_ignite_fid(args):
+    path_real = [args.dataset_path + "/train/trainimg", args.dataset_path + "/train/trainimgr"]
+
+    eval_root = args.eval_dir
     fid_scores = {}
     for p in path_real:
-        mod = [m for m in args.modals if m != p[-2:]]
+        mod = [m for m in args.modals if m != p[-8:]]
+        print(mod)
         ls = 0
         for src in mod:
-            print("evaluating " + src + " to " + p[-2:])
-            eval_path = eval_root + src + " to " + p[-2:]
+            print("evaluating " + src + " to " + p[-3:])
+            eval_path = eval_root +"/"+ src + " to " + p[-3:]
             true, pred = png_series_reader(p), png_series_reader(eval_path)
             if pred.shape[0] < true.shape[0]:
                 x = fid_ignite(true[:pred.shape[0], ], pred)
@@ -97,17 +101,18 @@ def calculate_ignite_fid():
     return fid_scores
 
 
-def calculate_ignite_inception_score():
-    path_real = [args.dataset_path + "png8020/train/ct", args.dataset_path + "png8020/train/t1",
-                 args.dataset_path + "png8020/train/t2"]
-    eval_root = "eval/"
+def calculate_ignite_inception_score(args):
+    path_real = [args.dataset_path + "/train/trainimg", args.dataset_path + "/train/trainimgr"]
+
+    eval_root = args.eval_dir
     fid_scores = {}
     for p in path_real:
-        mod = [m for m in args.modals if m != p[-2:]]
+        mod = [m for m in args.modals if m != p[-8:]]
+        print(mod)
         ls = 0
         for src in mod:
-            print("evaluating " + src + " to " + p[-2:])
-            eval_path = eval_root + src + " to " + p[-2:]
+            print("evaluating " + src + " to " + p[-3:])
+            eval_path = eval_root +"/"+ src + " to " + p[-3:]
             pred = png_series_reader(eval_path)
             x = inception_score_ignite(pred)
             fid_scores["IS-ignite/" + src + " to " + p[-2:]] = float(x)
@@ -353,17 +358,16 @@ def jpg_series_reader(dir):
 
 
 
-def create_images_for_dice_or_s_score(nets, idx_eval, syneval_loader, dice_=False, calculate_mae=False):
-    shutil.rmtree("Segmentation", ignore_errors=True)
-    shutil.rmtree("Ground", ignore_errors=True)
-    os.makedirs("Segmentation")
-    os.makedirs("Ground")
+def create_images_for_dice_or_s_score(args, netG, idx_eval, syneval_loader, dice_=False, calculate_mae=False):
+    shutil.rmtree(args.eval_dir+"/Segmentation", ignore_errors=True)
+    shutil.rmtree(args.eval_dir+"/Ground", ignore_errors=True)
+    os.makedirs(args.eval_dir+"/Segmentation")
+    os.makedirs(args.eval_dir+"/Ground")
     output_mae, plotted = 0, 0 
     mae = nn.L1Loss()
     with torch.no_grad():
-        for epoch, ((x_real, wavelet_real), (t_img, wavelet_target), shape_mask, mask, label_org) in tqdm(
-                enumerate(syneval_loader),
-                total=len(syneval_loader)):
+        for epoch, (x_real, t_img, shape_mask, mask, label_org) in tqdm(enumerate(syneval_loader), total=len(syneval_loader)):
+
             # label_trg = label_org[rand_idx]
             c_org = label2onehot(label_org, args.c_dim)
             # c_trg = label2onehot(label_trg, args.c_dim)
@@ -376,7 +380,6 @@ def create_images_for_dice_or_s_score(nets, idx_eval, syneval_loader, dice_=Fals
             # s = c_trg.size(0)
             # c_trg = c_trg[:s]
             c_trg = getLabel(x_real, device, idx_eval, args.c_dim)
-
             # Original-to-target domain.
 
             if not dice_:
@@ -397,7 +400,7 @@ def create_images_for_dice_or_s_score(nets, idx_eval, syneval_loader, dice_=Fals
                 c_org = torch.stack(c_o, dim=0).to(device)
 
             # good for dice
-            x_fake, t_fake = nets.netG_use(x_real, t_img,
+            x_fake, t_fake = netG(x_real, t_img,
                                         c_trg)  # G(image,target_image,target_modality) --> (out_image,output_target_area_image)
 
             if not dice_:
@@ -435,15 +438,15 @@ def create_images_for_dice_or_s_score(nets, idx_eval, syneval_loader, dice_=Fals
             if calculate_mae:
                 output_mae += mae(t_fake, t_img)
             for k in range(c_trg.size(0)):
-                filename = os.path.join("Segmentation",
+                filename = os.path.join(args.eval_dir,"Segmentation",
                                         '%.4i_%.2i.png' % (args.sepoch * args.eval_batch_size + (k + 1), epoch + 1))
-                save_image(t_fake[k], ncol=1, filename=filename)
-                filename = os.path.join("Ground",
+                save_image(t_fake[k], ncol=1, filename=filename, args=args)
+                filename = os.path.join(args.eval_dir,"Ground",
                                         '%.4i_%.2i.png' % (args.sepoch * args.eval_batch_size + (k + 1), epoch + 1))
                 if t_img.size(1) == 5:
                     t_img = t_img[:, :1]
 
-                save_image(t_img[k], ncol=1, filename=filename)
+                save_image(t_img[k], ncol=1, filename=filename, args=args)
     return output_mae/len(syneval_loader)
 
 
@@ -494,24 +497,26 @@ def calculate_all_metrics(args, net_G, fid_png=False, device="cpu"):
                                        syneval_dataset_ir,
                                        device
                                        )
-    try:
-        fid_dict = calculate_pytorch_fid()
-        fid_ignite_dict = calculate_ignite_fid()
-        IS_ignite_dict = calculate_ignite_inception_score()
-    except Exception as e:
-        print("Error ----->>>" ,e)
-        fid_dict, fid_ignite_dict, IS_ignite_dict = {}, {}, {}
+    fid_dict = calculate_pytorch_fid(args)
+    fid_ignite_dict = calculate_ignite_fid(args)
+    IS_ignite_dict = calculate_ignite_inception_score(args)
+
 
     mod = ["rgb", "ir"]
     dice_dict, s_score_dict, iou_dict, mae_dict = {}, {}, {}, {}
+    if args.preloaded_data:
+        syneval_dataset_tot = DroneVeichleDataset(to_be_loaded=True)
+        syneval_dataset_tot.load_dataset(path=args.dataset_path+"/tensors",split="val", idx=str(0), img_size=args.img_size, colored_data=args.color_images)
+    else:
+        syneval_dataset_tot = DroneVeichleDataset(path=args.dataset_path, split='val', colored_data=args.color_images)
 
-    for i in range(3):  # 3 domains
+    syneval_loader = DataLoader(syneval_dataset_tot, shuffle=True, batch_size=args.eval_batch_size)    
+    for i in range(2):  # 2 domains
         # ======= Directories =======
-        cwd = os.path.normpath(os.getcwd() + os.sep + os.pardir)
         ground_dir = os.path.normpath('results/Ground')
         seg_dir = os.path.normpath('results/Segmentation')
 
-        mae_dict["mae/" + mod[i]] = create_images_for_dice_or_s_score(nets, i, syneval_loader, dice_=True, calculate_mae=True)
+        mae_dict["mae/" + mod[i]] = create_images_for_dice_or_s_score(args, net_G, i, syneval_loader, dice_=True, calculate_mae=True)
         # ======= Volume Reading =======
         Vref = png_series_reader(ground_dir)
         Vseg = png_series_reader(seg_dir)
@@ -525,7 +530,7 @@ def calculate_all_metrics(args, net_G, fid_png=False, device="cpu"):
         iou_dict["IoU/" + mod[i]] = iou
 
         # calculate s score
-        create_images_for_dice_or_s_score(nets, i, syneval_loader, dice_=False)
+        create_images_for_dice_or_s_score(args, net_G, i, syneval_loader, dice_=False)
         # ======= Volume Reading =======
         Vref = png_series_reader(ground_dir)
         Vseg = png_series_reader(seg_dir)

@@ -15,6 +15,8 @@ def set_deterministic(seed=42):
     torch.backends.cudnn.benchmark = False
     # torch.backends.cudnn.enabled = False
 
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-mode', type=str, default='train')
@@ -34,7 +36,7 @@ if __name__ == '__main__':
     parser.add_argument('-preloaded_data', type=bool, default=False)
     parser.add_argument('-pretrained_generator', type=bool, default=False)
     parser.add_argument('-color_images', type=bool, default=False)
-    parser.add_argument('-modals', type=tuple, )
+    parser.add_argument('-modals', type=tuple, default=("img_ir", "img"))
     parser.add_argument('-lr', type=float, default=1e-4)
     parser.add_argument('-loss_function', type=str, default='wgan-gp+move+cycle+ugan+d+l2')
     parser.add_argument('-optimizer', type=str, default='adam')
