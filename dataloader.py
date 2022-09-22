@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from ast import expr_context
 from turtle import shape
 from torch.utils.data import Dataset, DataLoader
 import os
@@ -230,7 +231,7 @@ class DroneVeichleDatasetPreTraining(Dataset):
         list_path = sorted([os.path.join(path1, x) for x in os.listdir(path1)]) + sorted([os.path.join(path2, x) for x in os.listdir(path2)])
         raw_path = [] #contains RGB image real
         # print(len(list_path), list_path[200])
-        for x in list_path[15000:17000]:
+        for x in list_path:
 
             if split+"imgr" in x:
                 c = np.array(0) #infrared
@@ -277,8 +278,8 @@ class DroneVeichleDatasetPreTraining(Dataset):
                 self.dataset.append((img, img_2, np.array(1)))
             else:
                 self.dataset.append((img_2, img, np.array(1)))
-            irr = False
 
+            irr = False
         self.split = split
         self.colored_data = colored_data
         print("DroneVeichle "+ split+ " data load success!")
@@ -286,7 +287,6 @@ class DroneVeichleDatasetPreTraining(Dataset):
             
     def __getitem__(self, item):
         img, img_2 = self.dataset[item][0], self.dataset[item][1]
-
         if img.shape[0]!=self.img_size:
             img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
             img_2 = cv2.resize(img_2, (self.img_size, self.img_size), interpolation=cv2.INTER_NEAREST)
@@ -298,13 +298,23 @@ class DroneVeichleDatasetPreTraining(Dataset):
             if random.random() > 0.5:
                 img = cv2.flip(img, 1)
                 img_2 = cv2.flip(img_2, 1)
+
         #  scale to [-1,1]
         img = (img - 0.5) / 0.5
         img_2 = (img_2 - 0.5) / 0.5
 
-        img = torch.from_numpy(img).type(torch.FloatTensor).permute(2, 0, 1)
-        img_2 = grayscale(torch.from_numpy(img_2).type(torch.FloatTensor).permute(2, 0, 1))
-        return img, img_2
+        lab = torch.from_numpy(self.dataset[item][2]).type(torch.FloatTensor)
+
+        if len(img.shape)>2:
+            img = torch.from_numpy(img).type(torch.FloatTensor).permute(2, 0, 1)
+        else:
+            img = torch.from_numpy(img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
+        if len(img_2.shape)>2:
+            img_2 = torch.from_numpy(img_2).type(torch.FloatTensor).permute(2, 0, 1)
+        else:    
+            img_2 = torch.from_numpy(img_2).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
+        
+        return img, img_2, lab
 
     def __len__(self):
         return len(self.dataset)

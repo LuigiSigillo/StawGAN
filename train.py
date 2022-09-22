@@ -38,6 +38,9 @@ def train(args):
     in_c = 1 if not args.color_images else 3
     netG = Generator(in_c= in_c + args.c_dim, mid_c=args.G_conv, layers =2, s_layers=3, affine=True, last_ac=True,
                         colored_input=args.color_images)
+    if args.pretrained_generator:
+        netG.load_state_dict(torch.load("/home/luigi/Documents/TarGAN_Drone/pretrained_gen_128.pt"))
+
     netH = ShapeUNet(img_ch=in_c, output_ch=1, mid=args.h_conv)
     netD_i = Discriminator(c_dim=args.c_dim * 2, image_size=args.img_size, colored_input=args.color_images)
     netD_t = Discriminator(c_dim=args.c_dim * 2, image_size=args.img_size, colored_input=args.color_images)
@@ -310,9 +313,10 @@ if __name__ == '__main__':
     parser.add_argument('-epoch', type=int, default=50)
     parser.add_argument('-sepoch', type=int, default=0)
     parser.add_argument('-preloaded_data', type=bool, default=False)
+    parser.add_argument('-pretrained_generator', type=bool, default=False)
     parser.add_argument('-color_images', type=bool, default=False)
     parser.add_argument('-modals', type=tuple, )
-    parser.add_argument('-lr', type=float, default=1e-6)
+    parser.add_argument('-lr', type=float, default=1e-4)
     parser.add_argument('-loss_function', type=str, default='wgan-gp+move+cycle+ugan+d+l2')
     parser.add_argument('-optimizer', type=str, default='adam')
     parser.add_argument('-note', type=str,default='affine:True;')
