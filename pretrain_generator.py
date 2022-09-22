@@ -39,4 +39,4 @@ data = DroneVeichleDatasetPreTraining(split="train",img_size=256, )
 
 pretrain_generator(net_G, DataLoader(data, shuffle=True, batch_size=16), opt, criterion, 20)
 
-torch.save(net_G.state_dict(), "pretrained_gen.pt")
+torch.save(net_G.state_dict(), "pretrained_gen_256.pt")

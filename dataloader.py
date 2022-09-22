@@ -231,7 +231,8 @@ class DroneVeichleDatasetPreTraining(Dataset):
         list_path = sorted([os.path.join(path1, x) for x in os.listdir(path1)]) + sorted([os.path.join(path2, x) for x in os.listdir(path2)])
         raw_path = [] #contains RGB image real
         # print(len(list_path), list_path[200])
-        for x in list_path:
+        random.shuffle(list_path)
+        for x in list_path[:20000]:
 
             if split+"imgr" in x:
                 c = np.array(0) #infrared
@@ -318,13 +319,6 @@ class DroneVeichleDatasetPreTraining(Dataset):
 
     def __len__(self):
         return len(self.dataset)
-
-    def load_dataset(self, my_folder="dataset", split='train', idx = "0", img_size=128, colored_data = False):
-        self.label_dataset = torch.load(f"{my_folder}/{idx}_{split}_label_dataset.pt")
-        self.raw_dataset = torch.load(f"{my_folder}/{idx}_{split}_raw_dataset.pt")
-        self.img_size = img_size
-        self.split=split
-        self.colored_data = colored_data
 
 
 # dt = DroneVeichleDataset(split="val")
