@@ -22,24 +22,24 @@ def train(args):
 
     # set_seed(args.random_seed)
     if not args.preloaded_data:
-        syn_dataset = DroneVeichleDataset(split='train', colored_data=args.color_images)
+        syn_dataset = DroneVeichleDataset(path=args.dataset_path,split='train', colored_data=args.color_images)
         syn_loader = DataLoader(syn_dataset, batch_size=args.batch_size, shuffle=True)
-        syneval_dataset = DroneVeichleDataset(split='val', colored_data=args.color_images)
+        syneval_dataset = DroneVeichleDataset(path=args.dataset_path, split='val', colored_data=args.color_images)
     else:
         idx = 0
         args.epoch= 10*args.epoch
         syn_dataset = DroneVeichleDataset(to_be_loaded=True)
-        syn_dataset.load_dataset("dataset/tensors",split="train", idx=str(idx), img_size=args.img_size, colored_data=args.color_images)
+        syn_dataset.load_dataset(path=args.dataset_path+"/tensors",split="train", idx=str(idx), img_size=args.img_size, colored_data=args.color_images)
         syn_loader = DataLoader(syn_dataset, batch_size=args.batch_size, shuffle=True)
 
         syneval_dataset = DroneVeichleDataset(to_be_loaded=True)
-        syneval_dataset.load_dataset("dataset/tensors",split="val", idx=str(idx), img_size=args.img_size, colored_data=args.color_images)
+        syneval_dataset.load_dataset(path=args.dataset_path+"/tensors",split="val", idx=str(idx), img_size=args.img_size, colored_data=args.color_images)
 
     in_c = 1 if not args.color_images else 3
     netG = Generator(in_c= in_c + args.c_dim, mid_c=args.G_conv, layers =2, s_layers=3, affine=True, last_ac=True,
                         colored_input=args.color_images)
     if args.pretrained_generator:
-        netG.load_state_dict(torch.load("/home/luigi/Documents/TarGAN_Drone/pretrained_gen_128.pt"))
+        netG.load_state_dict(torch.load(args.save_path+"/pretrained_gen_256.pt"))
 
     netH = ShapeUNet(img_ch=in_c, output_ch=1, mid=args.h_conv)
     netD_i = Discriminator(c_dim=args.c_dim * 2, image_size=args.img_size, colored_input=args.color_images)
@@ -200,7 +200,7 @@ def train(args):
 
                 moving_average(netG, netG_use, beta=0.999)
 
-                if (epoch + 0) % 10 == 0:
+                if (epoch + 0) % args.logs_every == 0:
                     all_losses = dict()
 
                     all_losses["train/D/w_di"] = w_di
@@ -238,7 +238,7 @@ def train(args):
                 # raise Exception
 
 
-            if (i + 1) == args.epoch:
+            if (i + 1) == args.save_every:
                 args.net_name = 'netG'
                 save_state_net(netG, args, i + 1, g_optimizier, args.experiment_name)
                 args.net_name = 'netG_use'
@@ -304,10 +304,14 @@ def set_deterministic(seed=42):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-datasets', type=str, default='droneveichle')
+    parser.add_argument('-dataset', type=str, default='droneveichle')
+    parser.add_argument('-dataset_path', type=str, default='dataset')
     parser.add_argument('-experiment_name', type=str, default='testing')
     parser.add_argument('-save_path', type=str, default='checkpoints')
+    parser.add_argument('-save_every', type=int, default=25)
+    parser.add_argument('-logs_every', type=int, default=10)
     parser.add_argument('-batch_size', type=int, default=12)
+    parser.add_argument('-eval_batch_size', type=int, default=50)
     parser.add_argument('-img_size', type=int, default=128)
     parser.add_argument('-gan_version', type=str, default='Generator[2/3]+shapeunet+D')
     parser.add_argument('-epoch', type=int, default=50)

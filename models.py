@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 bias = False
+from torchvision import models
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
 class conv_block(nn.Module):
     # base block
@@ -257,3 +259,103 @@ class ShapeUNet(nn.Module):
         d1 = self.Conv_1x1(d2)
 
         return torch.sigmoid(d1)
+
+
+
+######METRICS MODEL
+
+class AlexNet(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.layers = models.alexnet(pretrained=True).features
+        self.channels = []
+        for layer in self.layers:
+            if isinstance(layer, nn.Conv2d):
+                self.channels.append(layer.out_channels)
+
+    def forward(self, x):
+        fmaps = []
+        for layer in self.layers:
+            x = layer(x)
+            if isinstance(layer, nn.ReLU):
+                fmaps.append(x)
+        return fmaps
+
+
+class Conv1x1(nn.Module):
+    def __init__(self, in_channels, out_channels=1):
+        super().__init__()
+        self.main = nn.Sequential(
+            nn.Dropout(0.5),
+            nn.Conv2d(in_channels, out_channels, 1, 1, 0, bias=False))
+
+    def forward(self, x):
+        return self.main(x)
+
+
+def normalize_lpips(x, eps=1e-10):
+    return x * torch.rsqrt(torch.sum(x ** 2, dim=1, keepdim=True) + eps)
+
+
+
+class LPIPS(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.alexnet = AlexNet()
+        self.lpips_weights = nn.ModuleList()
+        for channels in self.alexnet.channels:
+            self.lpips_weights.append(Conv1x1(channels, 1))
+        self._load_lpips_weights()
+        # imagenet normalization for range [-1, 1]
+        self.mu = torch.tensor([-0.03, -0.088, -0.188]).view(1, 3, 1, 1).to(device)
+        self.sigma = torch.tensor([0.458, 0.448, 0.450]).view(1, 3, 1, 1).to(device)
+
+    def _load_lpips_weights(self):
+        own_state_dict = self.state_dict()
+        
+        state_dict = torch.load('checkpoints/lpips_weights.ckpt',
+                                    map_location=device)
+        for name, param in state_dict.items():
+            if name in own_state_dict:
+                own_state_dict[name].copy_(param)
+
+    def forward(self, x, y):
+        x = (x - self.mu) / self.sigma
+        y = (y - self.mu) / self.sigma
+        x_fmaps = self.alexnet(x)
+        y_fmaps = self.alexnet(y)
+        lpips_value = 0
+        for x_fmap, y_fmap, conv1x1 in zip(x_fmaps, y_fmaps, self.lpips_weights):
+            x_fmap = normalize_lpips(x_fmap)
+            y_fmap = normalize_lpips(y_fmap)
+            lpips_value += torch.mean(conv1x1((x_fmap - y_fmap) ** 2))
+        return lpips_value
+
+class InceptionV3(nn.Module):
+    def __init__(self):
+        super().__init__()
+        inception = models.inception_v3(pretrained=True)
+        self.block1 = nn.Sequential(
+            inception.Conv2d_1a_3x3, inception.Conv2d_2a_3x3,
+            inception.Conv2d_2b_3x3,
+            nn.MaxPool2d(kernel_size=3, stride=2))
+        self.block2 = nn.Sequential(
+            inception.Conv2d_3b_1x1, inception.Conv2d_4a_3x3,
+            nn.MaxPool2d(kernel_size=3, stride=2))
+        self.block3 = nn.Sequential(
+            inception.Mixed_5b, inception.Mixed_5c,
+            inception.Mixed_5d, inception.Mixed_6a,
+            inception.Mixed_6b, inception.Mixed_6c,
+            inception.Mixed_6d, inception.Mixed_6e)
+        self.block4 = nn.Sequential(
+            inception.Mixed_7a, inception.Mixed_7b,
+            inception.Mixed_7c,
+            nn.AdaptiveAvgPool2d(output_size=(1, 1)))
+
+    def forward(self, x):
+        x = self.block1(x)
+        x = self.block2(x)
+        x = self.block3(x)
+        x = self.block4(x)
+        return x.view(x.size(0), -1)
+

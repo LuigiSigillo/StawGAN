@@ -11,6 +11,9 @@ from PIL import Image
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import torchvision as tv
+import random 
+from tqdm import tqdm
+
 grayscale = tv.transforms.Grayscale(num_output_channels=1)
 
 class DroneVeichleDataset(Dataset):
@@ -158,12 +161,15 @@ class DroneVeichleDataset(Dataset):
     def __len__(self):
         return len(self.raw_dataset)
 
-    def load_dataset(self, my_folder="dataset", split='train', idx = "0", img_size=128, colored_data = False):
-        self.label_dataset = torch.load(f"{my_folder}/{idx}_{split}_label_dataset.pt")
-        self.raw_dataset = torch.load(f"{my_folder}/{idx}_{split}_raw_dataset.pt")
+    def load_dataset(self, path="dataset", split='train', idx = "0", img_size=128, colored_data = False):
+        self.label_dataset = torch.load(f"{path}/{idx}_{split}_label_dataset.pt")
+        self.raw_dataset = torch.load(f"{path}/{idx}_{split}_raw_dataset.pt")
         self.img_size = img_size
         self.split=split
         self.colored_data = colored_data
+
+
+
 
 
 def label_preprocess(data):
@@ -210,14 +216,6 @@ def raw_preprocess(data, get_s=False):
         # raise Exception
         return out, shape_mask
     return out
-
-
-def denorm(x):
-    res = (x + 1.) / 2.
-    res.clamp_(0, 1)
-    return res
-
-
 
 class DroneVeichleDatasetPreTraining(Dataset):
     def __init__(self,path="dataset", split='train', modals=('img','imgr'),transforms=None, img_size=128, to_be_loaded=False, colored_data=False):
@@ -349,35 +347,39 @@ class DroneVeichleDatasetPreTraining(Dataset):
 #     #     break
 
 
-# path="dataset"
-# split='train'
-# modals=('img','imgr')
-# fold = split + "/"
-# path1 = os.path.join(path, fold+ split+modals[0])
-# path2 = os.path.join(path, fold + split+modals[1])
-# list_path = sorted([os.path.join(path1, x) for x in os.listdir(path1)]) + sorted([os.path.join(path2, x) for x in os.listdir(path2)])
-# import random 
-# print(len(list_path))
-# from tqdm import tqdm
-# for idx in tqdm(range(19)):
-#     random.shuffle(list_path)
-#     l_o = list_path[:2000]
-#     dt = DroneVeichleDataset(l_o,split=split, img_size=256)
-#     my_folder = "dataset/tensors"
-#     idx = str(idx)
+def save_tensors_dataset(path="dataset", split="train", slices=19, max_length_slices=2000, img_size=256):
+    modals=('img','imgr')
+    fold = split + "/"
+    path1 = os.path.join(path, fold+ split+modals[0])
+    path2 = os.path.join(path, fold + split+modals[1])
+    list_path = sorted([os.path.join(path1, x) for x in os.listdir(path1)]) + sorted([os.path.join(path2, x) for x in os.listdir(path2)])
+    print(len(list_path))
+    for idx in tqdm(range(slices)):
+        random.shuffle(list_path)
+        l_o = list_path[:max_length_slices]
+        dt = DroneVeichleDataset(l_o,split=split, img_size=img_size)
+        my_folder = "dataset/tensors"
+        idx = str(idx)
 
-#     torch.save(dt.raw_dataset, f"{my_folder}/{idx}_{split}_raw_dataset.pt")
-#     torch.save(dt.label_dataset, f"{my_folder}/{idx}_{split}_label_dataset.pt")
-#     list_path = list(set(list_path)-set(l_o))
-#     print(len(list_path), " remaining samples")
-# label_d = torch.load(f"{my_folder}/0label_dataset.pt")
-# raw_d = torch.load(f"{my_folder}/0raw_dataset.pt")
-
-# dt_loaded = DroneVeichleDataset(to_be_loaded=True)
-# dt_loaded.load_dataset()
-
-# for epoch, (x_real, t_img, shape_mask, mask, label_org) in enumerate(DataLoader(dt_loaded)):
-#     print((x_real.shape, t_img.shape, shape_mask.shape, mask.shape, label_org.shape))
+        torch.save(dt.raw_dataset, f"{my_folder}/{idx}_{split}_raw_dataset.pt")
+        torch.save(dt.label_dataset, f"{my_folder}/{idx}_{split}_label_dataset.pt")
+        list_path = list(set(list_path)-set(l_o))
+        print(len(list_path), " remaining samples")
 
 
+class DefaultDataset(Dataset):
+    def __init__(self, root, transform=None):
+        self.samples = os.listdir(root)
+        self.samples.sort()
+        self.transform = transform
+        self.targets = None
 
+    def __getitem__(self, index):
+        fname = self.samples[index]
+        img = Image.open(fname).convert('RGB')
+        if self.transform is not None:
+            img = self.transform(img)
+        return img
+
+    def __len__(self):
+        return len(self.samples)

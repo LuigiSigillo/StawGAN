@@ -3,6 +3,8 @@ import torch
 import random
 import numpy as np
 import matplotlib.pyplot as plt
+from itertools import chain
+from pathlib import Path
 
 def loss_filter(mask,device="cuda"):
     list = []
@@ -133,3 +135,8 @@ def load_nets(nets,sepoch):
         print("loading", net)
         net_check = net if "use" in net else net.replace("_", "")
         load_state_net(nets[net], net_check, sepoch)
+
+def listdir(dname):
+    fnames = list(chain(*[list(Path(dname).rglob('*.' + ext))
+                          for ext in ['png', 'jpg', 'jpeg', 'JPG']]))
+    return fnames
