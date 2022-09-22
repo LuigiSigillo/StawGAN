@@ -9,11 +9,9 @@ from tqdm import tqdm
 import torch.nn.functional as F
 import wandb
 from dataloader import DefaultDataset
+from utils import getLabel, save_image
 
-
-from dataset import ChaosDataset_Syn_Test, ChaosDataset_Syn_new, MyDataset
 from models import LPIPS
-from utils import build_model, load_nets, save_image, getLabel, label2onehot, save_json
 import numpy as np
 import glob
 import cv2
@@ -124,7 +122,7 @@ Stargan v2 metrics
 
 
 @torch.no_grad()
-def calculate_metrics(nets, args, step, mode, syneval_dataset, syneval_dataset2):
+def calculate_metrics(netG, args, mode, syneval_dataset, syneval_dataset2, device):
     print('Calculating evaluation metrics...')
     domains = ["valimg","valimgr"]
     domains.sort()
@@ -136,7 +134,7 @@ def calculate_metrics(nets, args, step, mode, syneval_dataset, syneval_dataset2)
         "valimg_loader": DataLoader(syneval_dataset, batch_size=args.eval_batch_size),
         "valimgr_loader": DataLoader(syneval_dataset2, batch_size=args.eval_batch_size),
     }
-    mod = {"ir": 0, "rgb": 1}
+    mod = {"valimg": 0, "valimgr": 1}
 
     # loaders = (syneval_dataset, syneval_dataset2,syneval_dataset3)
     # loaders = (DataLoader(syneval_dataset,batch_size=4), DataLoader(syneval_dataset2,batch_size=4),DataLoader(syneval_dataset3,batch_size=4))
@@ -163,7 +161,7 @@ def calculate_metrics(nets, args, step, mode, syneval_dataset, syneval_dataset2)
             os.makedirs(path_fake)
             lpips_values = []
             print('Generating images and calculating LPIPS for %s...' % task)
-            for i, (x_src, x_msk) in enumerate(tqdm(loader_src, total=len(loader_src))):
+            for i, (x_src) in enumerate(tqdm(loader_src, total=len(loader_src))):
                 N = x_src.size(0)
                 x_src = x_src.to(device)
                 # y_trg = torch.tensor([trg_idx] * N).to(device)
@@ -174,7 +172,7 @@ def calculate_metrics(nets, args, step, mode, syneval_dataset, syneval_dataset2)
                         x_ref = next(iter_ref).to(device)
                     except:
                         iter_ref = iter(loader_ref)
-                        x_ref, x_ref_msk = next(iter_ref)
+                        x_ref = next(iter_ref)
                         x_ref = x_ref.to(device)
 
                     if x_ref.size(0) > N:
@@ -183,14 +181,14 @@ def calculate_metrics(nets, args, step, mode, syneval_dataset, syneval_dataset2)
                     # x_src_batch = x_src.unsqueeze(0)
                     idx = mod[trg_domain]
                     c = getLabel(x_src, device, idx, args.c_dim)
-                    x_src = x_src[:, :1, :, :]
-                    x_fake = nets.netG_use(x_src, None, c, mode='test')
+                    # x_src = x_src[:, :1, :, :]
+                    x_fake = netG(x_src, None, c, mode='test')
                     group_of_images.append(x_fake)
                     # save generated images to calculate FID later
                     for k in range(N):
                         filename = os.path.join(path_fake,
                                                 '%.4i_%.2i.png' % (i * args.eval_batch_size + (k + 1), j + 1))
-                        save_image(x_fake[k], ncol=1, filename=filename)
+                        save_image(x_fake[k], ncol=1, filename=filename, args=args)
 
                 # lpips_value = calculate_lpips_given_images(group_of_images)
                 # lpips_values.append(lpips_value)
@@ -343,6 +341,17 @@ def png_series_reader(dir):
     V = V.astype(bool)
     return V
 
+def jpg_series_reader(dir):
+    V = []
+    png_file_list = glob.glob(dir + '/*.jpg')[:500]
+    png_file_list.sort()
+    for filename in png_file_list:
+        image = cv2.imread(filename, 0)
+        V.append(image)
+    V = np.array(V, order='A')
+    return V
+
+
 
 def create_images_for_dice_or_s_score(nets, idx_eval, syneval_loader, dice_=False, calculate_mae=False):
     shutil.rmtree("Segmentation", ignore_errors=True)
@@ -477,12 +486,13 @@ def compute_miou(validation_pred, validation_true):
     return iou
 
 
-def calculate_all_metrics(args, net_G, fid_png=False):
-    syneval_dataset, syneval_dataset_ir = DefaultDataset("/home/luigi/Documents/TarGAN_Drone/dataset/val/valimg"), \
-                                         DefaultDataset("/home/luigi/Documents/TarGAN_Drone/dataset/val/valimgr")
-    _, fid_stargan = calculate_metrics(args, net_G, 'test',
+def calculate_all_metrics(args, net_G, fid_png=False, device="cpu"):
+    syneval_dataset, syneval_dataset_ir = DefaultDataset("dataset/val/valimg"), \
+                                         DefaultDataset("dataset/val/valimgr")
+    _, fid_stargan = calculate_metrics(net_G, args, 'test',
                                        syneval_dataset,
                                        syneval_dataset_ir,
+                                       device
                                        )
     try:
         fid_dict = calculate_pytorch_fid()
@@ -528,6 +538,7 @@ def calculate_all_metrics(args, net_G, fid_png=False):
         #     print('S-score = %.3f' %(dice))
 
     return fid_stargan, fid_dict, dice_dict, s_score_dict, iou_dict, IS_ignite_dict, fid_ignite_dict, mae_dict
+
 
 
 def evaluation():

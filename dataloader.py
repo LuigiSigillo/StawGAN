@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import torchvision as tv
 import random 
 from tqdm import tqdm
+from torchvision import transforms
 
 grayscale = tv.transforms.Grayscale(num_output_channels=1)
 
@@ -368,15 +369,22 @@ def save_tensors_dataset(path="dataset", split="train", slices=19, max_length_sl
 
 
 class DefaultDataset(Dataset):
-    def __init__(self, root, transform=None):
+    def __init__(self, root, img_size=256, transform=None):
         self.samples = os.listdir(root)
         self.samples.sort()
         self.transform = transform
         self.targets = None
-
+        self.root = root
+        mean = [0.5, 0.5, 0.5]
+        std = [0.5, 0.5, 0.5]
+        self.transform = transforms.Compose([
+        transforms.Resize([img_size, img_size]),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=mean, std=std)
+    ])
     def __getitem__(self, index):
         fname = self.samples[index]
-        img = Image.open(fname).convert('RGB')
+        img = Image.open(os.path.join(self.root,fname)).convert('RGB')
         if self.transform is not None:
             img = self.transform(img)
         return img

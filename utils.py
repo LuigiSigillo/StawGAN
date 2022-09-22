@@ -5,6 +5,41 @@ import numpy as np
 import matplotlib.pyplot as plt
 from itertools import chain
 from pathlib import Path
+import wandb
+import torchvision.utils as vutils
+
+
+def denormalize(x):
+    out = (x + 1) / 2
+    return out.clamp_(0, 1)
+
+def save_image(x, ncol, filename,args):
+    x = denormalize(x)
+
+    # IF BATCH
+    if len(x.shape) == 4:
+        if x.size(1) == 3: # non quat
+            x = x
+        else: #quat
+            #x = x[:,1:4,:,:]
+            x = x[:,0:3,:,:]
+    
+        sample_dir = " ".join(filename.replace(args.experiment_name,"").replace(".jpg","").split("_")[1:])
+        if args.mode=="train":
+            iters = str(int(filename.replace(args.experiment_name,"").split("/")[3].split("_")[0]))
+
+    # IS ONLY ONE PHOTO
+    else:
+        if x.size(0) == 3: # non quat
+            x = x
+        else: #quat
+            #x = x[:,1:4,:,:]
+            x = x[0:3,:,:]
+        #iters = str(int(filename.split("/")[9].split("_")[0]))
+    
+    vutils.save_image(x.cpu(), filename, nrow=ncol, padding=0)
+    if len(x.shape) == 4 and args.mode=="train":
+        wandb.log({sample_dir: wandb.Image(filename,caption=iters)},commit=False)
 
 def loss_filter(mask,device="cuda"):
     list = []
