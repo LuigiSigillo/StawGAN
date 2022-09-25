@@ -25,8 +25,9 @@ def calculate_pytorch_fid(args):
     path_real = [args.dataset_path + "/train/trainimg", args.dataset_path + "/train/trainimgr"]
     eval_root = args.eval_dir
     fid_scores = {}
+    modals = ('imgr', 'img')
     for p in path_real:
-        mod = [m for m in args.modals if m != p[-8:]]
+        mod = [m for m in modals if m != p[-8:]]
         print(mod)
         ls = 0
         for src in mod:
@@ -81,8 +82,10 @@ def calculate_ignite_fid(args):
 
     eval_root = args.eval_dir
     fid_scores = {}
+    modals = ('imgr', 'img')
+
     for p in path_real:
-        mod = [m for m in args.modals if m != p[-8:]]
+        mod = [m for m in modals if m != p[-8:]]
         print(mod)
         ls = 0
         for src in mod:
@@ -105,8 +108,10 @@ def calculate_ignite_inception_score(args):
 
     eval_root = args.eval_dir
     fid_scores = {}
+    modals = ('imgr', 'img')
+
     for p in path_real:
-        mod = [m for m in args.modals if m != p[-8:]]
+        mod = [m for m in modals if m != p[-8:]]
         print(mod)
         ls = 0
         for src in mod:
