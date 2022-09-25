@@ -111,7 +111,7 @@ def save_state_net(net, args, index, optim=None, experiment_name="test"):
             for i in argsDict.keys():
                 f.writelines(str(i) + ' : ' + str(argsDict[i]) + '\n')
 
-def load_state_net(net, net_name, index, optim=None, experiment_name="", device="cpu"):
+def load_state_net(net, net_name, index, optim=None, experiment_name="", device="cuda"):
     save_path = os.path.join(save_path, experiment_name)
     if not os.path.isdir(save_path):
         raise Exception("wrong path")

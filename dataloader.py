@@ -377,6 +377,8 @@ class DefaultDataset(Dataset):
         self.root = root
         mean = [0.5, 0.5, 0.5]
         std = [0.5, 0.5, 0.5]
+        self.box = (100, 100, 740, 612)
+
         self.transform = transforms.Compose([
         transforms.Resize([img_size, img_size]),
         transforms.ToTensor(),
@@ -385,6 +387,8 @@ class DefaultDataset(Dataset):
     def __getitem__(self, index):
         fname = self.samples[index]
         img = Image.open(os.path.join(self.root,fname)).convert('RGB')
+        img = img.crop(self.box)
+
         if self.transform is not None:
             img = self.transform(img)
         return img

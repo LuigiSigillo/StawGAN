@@ -11,7 +11,7 @@ import wandb
 from dataloader import DefaultDataset, DroneVeichleDataset
 from utils import getLabel, label2onehot, save_image
 
-from models import LPIPS, InceptionV3
+from models import LPIPS, Generator, InceptionV3
 import numpy as np
 import glob
 import cv2
@@ -19,9 +19,8 @@ from scipy import linalg
 import subprocess
 from ignite.metrics import FID, InceptionScore
 
-device = "cpu"
+device = "cuda"
 
-#TODO check path
 def calculate_pytorch_fid(args):
     path_real = [args.dataset_path + "/train/trainimg", args.dataset_path + "/train/trainimgr"]
     eval_root = args.eval_dir
@@ -32,7 +31,7 @@ def calculate_pytorch_fid(args):
         ls = 0
         for src in mod:
             print("evaluating " + src + " to " + p[-3:])
-            eval_path = eval_root +"/"+ src + " to " + p[-3:]
+            eval_path = eval_root +"/val"+ src + " to val" + p[-3:]
             dev = "cuda" if torch.cuda.is_available() else "cpu"
             x = str(subprocess.check_output(f'python -m pytorch_fid "{p}" "{eval_path}" --device {dev} --batch-size {args.eval_batch_size}',
                 shell=True))
@@ -88,7 +87,7 @@ def calculate_ignite_fid(args):
         ls = 0
         for src in mod:
             print("evaluating " + src + " to " + p[-3:])
-            eval_path = eval_root +"/"+ src + " to " + p[-3:]
+            eval_path = eval_root +"/val"+ src + " to val" + p[-3:]
             true, pred = png_series_reader(p), png_series_reader(eval_path)
             if pred.shape[0] < true.shape[0]:
                 x = fid_ignite(true[:pred.shape[0], ], pred)
@@ -112,7 +111,7 @@ def calculate_ignite_inception_score(args):
         ls = 0
         for src in mod:
             print("evaluating " + src + " to " + p[-3:])
-            eval_path = eval_root +"/"+ src + " to " + p[-3:]
+            eval_path = eval_root +"/val"+ src + " to val" + p[-3:]
             pred = png_series_reader(eval_path)
             x = inception_score_ignite(pred)
             fid_scores["IS-ignite/" + src + " to " + p[-2:]] = float(x)
@@ -489,7 +488,7 @@ def compute_miou(validation_pred, validation_true):
     return iou
 
 
-def calculate_all_metrics(args, net_G, fid_png=False, device="cpu"):
+def calculate_all_metrics(args, net_G, fid_png=False, device="cuda"):
     syneval_dataset, syneval_dataset_ir = DefaultDataset("dataset/val/valimg"), \
                                          DefaultDataset("dataset/val/valimgr")
     _, fid_stargan = calculate_metrics(net_G, args, 'test',
@@ -546,38 +545,25 @@ def calculate_all_metrics(args, net_G, fid_png=False, device="cpu"):
 
 
 
-def evaluation():
-    syneval_dataset = ChaosDataset_Syn_Test(path=args.dataset_path, modal=args.modals[0], gan=True,
-                                            image_size=args.image_size)
-    syneval_dataset2 = ChaosDataset_Syn_Test(path=args.dataset_path, modal=args.modals[1], gan=True,
-                                             image_size=args.image_size)
-    syneval_dataset3 = ChaosDataset_Syn_Test(path=args.dataset_path, modal=args.modals[2], gan=True,
-                                             image_size=args.image_size)
-    syneval_dataset4 = ChaosDataset_Syn_new(path=args.dataset_path, split='test', modals=args.modals,
-                                            image_size=args.image_size)
-    syneval_loader = DataLoader(syneval_dataset4, batch_size=args.eval_batch_size,
-                                shuffle=True if args.mode != "sample" else False, collate_fn=None)  # if (
-    # args.real or (not args.real and args.soup)) else convert_data_for_quaternion_tarGAN)
+def evaluation(args,):
     ii = args.sepoch * 650
-    nets, disc_c_dim = build_model()
-    load_nets(nets)
-    with wandb.init(config=args, project="quattargan") as run:
+    net_G = Generator(in_c= 3 + args.c_dim, 
+                                mid_c=args.G_conv, 
+                                layers =2, s_layers=3, 
+                                affine=True, last_ac=True,
+                                colored_input=True).to(device)
+    net_G.load_state_dict(torch.load(args.save_path+"/"+args.experiment_name+"/netG_use_500_color_targan_lr1e-2.pkl",
+    map_location=device))
+    with wandb.init(config=args, project="targan_drone") as run:
         wandb.run.name = args.experiment_name
-        fidstar, fid, dice, ravd, s_score, fid_giov, iou_dict, IS_ignite_dict, fid_ignite_dict, mae_dict = calculate_all_metrics(
-            nets,
-            syneval_dataset,
-            syneval_dataset2,
-            syneval_dataset3,
-            syneval_loader,
-            fid_png=False)
+        fid_stargan, fid_dict, dice_dict, s_score_dict, iou_dict, IS_ignite_dict, fid_ignite_dict, mae_dict = calculate_all_metrics(args, net_G)
+
         # fid = calculate_pytorch_fid()
 
-        wandb.log(dict(fid), step=ii + 1, commit=False)
-        wandb.log(dict(fid_giov), step=ii + 1, commit=False)
-        wandb.log(dict(fidstar), step=ii + 1, commit=False)
-        wandb.log(dict(dice), step=ii + 1, commit=False)
-        wandb.log(dict(ravd), step=ii + 1, commit=False)
-        wandb.log(dict(s_score), step=ii + 1, commit=False)
+        wandb.log(dict(fid_stargan), step=ii + 1, commit=False)
+        wandb.log(dict(fid_dict), step=ii + 1, commit=False)
+        wandb.log(dict(dice_dict), step=ii + 1, commit=False)
+        wandb.log(dict(s_score_dict), step=ii + 1, commit=False)
         wandb.log(dict(IS_ignite_dict), step=ii + 1, commit=False)
         wandb.log(dict(fid_ignite_dict), step=ii + 1, commit=False)
         wandb.log(dict(mae_dict), step=ii + 1, commit=False)

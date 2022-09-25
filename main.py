@@ -2,7 +2,7 @@ import argparse
 import random
 import numpy as np
 import torch
-from metrics import calculate_all_metrics
+from metrics import calculate_all_metrics, evaluation
 from train import train
 def set_deterministic(seed=42):
     random.seed(seed)
@@ -61,12 +61,4 @@ if __name__ == '__main__':
     if args.mode=="train":
         train(args)
     elif args.mode=="eval":
-        # eval()
-        import models
-        net_G = models.Generator(in_c= 3 + args.c_dim, 
-                                mid_c=args.G_conv, 
-                                layers =2, s_layers=3, 
-                                affine=True, last_ac=True,
-                                colored_input=True)
-
-        calculate_all_metrics(args, net_G)
+        evaluation(args)
