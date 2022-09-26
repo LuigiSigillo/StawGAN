@@ -14,6 +14,8 @@ import torchvision as tv
 import random 
 from tqdm import tqdm
 from torchvision import transforms
+from scipy.fftpack import hilbert as ht
+import pywt
 
 grayscale = tv.transforms.Grayscale(num_output_channels=1)
 
@@ -403,10 +405,10 @@ img should be a numpy array
 '''
 
 
-def wavelet_wrapper(img, img_size, modality=None):
-    if args.wavelet_type == 'real':
+def wavelet_wrapper(wavelet_type, img, img_size, modality=None):
+    if wavelet_type == 'real':
         return wavelet_real(img,img_size)
-    elif args.wavelet_type == 'quat':
+    elif wavelet_type == 'quat':
         return wavelet_quat(img,img_size, modality)
     else:
         raise Exception
@@ -490,7 +492,9 @@ def wavelet_quat(image,image_size, modality):
 
 @torch.no_grad()
 def wavelet_real(img, image_size):
+    print(img.shape)
     img = cv2.resize(img, (image_size * 2 - 4, image_size * 2 - 4))
+    print(img.shape)
     ll, lh, hl, hh = wavelet_transformation(img)
 
     qs = np.stack((ll, lh, hl, hh), axis=2)
@@ -531,7 +535,7 @@ def wavelet_real(img, image_size):
     train = qs
     train =(train - np.min(train))/np.ptp(train)
     '''
-
+    print(train.shape)
     # train = np.reshape(train, (
     # train.shape[2], train.shape[0], train.shape[1]))  # array of float32 (4,256,256) valori [0,1]
     train = np.transpose(train, (2, 0, 1))
@@ -664,7 +668,7 @@ def _column_convolve( X, h):
     #     Xshape[0] = full_size
 
     out = np.zeros(Xshape, dtype=X.dtype)
-    for idx in xrange(h_size):
+    for idx in range(h_size):
         out += X * h[idx]
     
     outShape = Xshape.copy()

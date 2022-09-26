@@ -370,7 +370,7 @@ class InceptionV3(nn.Module):
 def create_wavelet_from_input_tensor(inputs, mods, wav_type ):
     modalities = ["ir" if mods[i][0].any()==1 else "rgb" if mods[i][1].any()==1 else "" for i in range(mods.size(0))]
     lst = [
-        torch.from_numpy(wavelet_wrapper(wav_type,chunk.squeeze().cpu().detach().numpy(), chunk.size(2), modalities[i])).type(torch.FloatTensor)
+        torch.from_numpy(wavelet_wrapper(wav_type, chunk.squeeze().permute(1, 2,0).cpu().detach().numpy(), chunk.size(2), modalities[i])).type(torch.FloatTensor)
         for i,chunk in enumerate(torch.split(inputs.detach(), 1, dim=0))
         ]
     return torch.stack(lst, dim=0).to(device)
