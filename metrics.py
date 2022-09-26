@@ -9,9 +9,9 @@ from tqdm import tqdm
 import torch.nn.functional as F
 import wandb
 from dataloader import DefaultDataset, DroneVeichleDataset
-from utils import getLabel, label2onehot, save_image, save_json
+from utils import getLabel, label2onehot, save_image
 
-from models import LPIPS, Generator, InceptionV3
+from models import LPIPS, Generator
 import numpy as np
 import glob
 import cv2
@@ -528,7 +528,7 @@ def calculate_all_metrics(args, net_G, fid_png=False, device="cuda"):
     IS_ignite_dict = calculate_ignite_inception_score(args)
 
 
-    mod = ["rgb", "ir"]
+    mod = ['imgr', 'img']
     dice_dict, s_score_dict, iou_dict, mae_dict = {}, {}, {}, {}
     if args.preloaded_data:
         syneval_dataset_tot = DroneVeichleDataset(to_be_loaded=True)
@@ -560,8 +560,8 @@ def calculate_all_metrics(args, net_G, fid_png=False, device="cuda"):
         # ======= Volume Reading =======
         Vref = png_series_reader(ground_dir)
         Vseg = png_series_reader(seg_dir)
-        [dice] = DICE(Vref, Vseg)
-        s_score_dict["S-SCORE/" + mod[i]] = dice
+        s_score = DICE(Vref, Vseg)
+        s_score_dict["S-SCORE/" + mod[i]] = s_score
 
         # if dice_:
         #     print('DICE=%.3f RAVD=%.3f ' %(dice, ravd))

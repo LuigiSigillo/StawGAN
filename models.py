@@ -4,6 +4,8 @@ import torch.nn.functional as F
 import numpy as np
 bias = False
 from torchvision import models
+from dataloader import wavelet_wrapper
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 class conv_block(nn.Module):
@@ -358,4 +360,15 @@ class InceptionV3(nn.Module):
         x = self.block3(x)
         x = self.block4(x)
         return x.view(x.size(0), -1)
+
+
+
+@torch.no_grad()
+def create_wavelet_from_input_tensor(inputs, mods):
+    modalities = ["t1" if mods[i][0].any()==1 else "t2" if mods[i][1].any()==1 else "ct" for i in range(mods.size(0))]
+    lst = [
+        torch.from_numpy(wavelet_wrapper(chunk.squeeze().cpu().detach().numpy(), chunk.size(2), modalities[i])).type(torch.FloatTensor)
+        for i,chunk in
+        enumerate(torch.split(inputs.detach(), 1, dim=0))]
+    return torch.stack(lst, dim=0).to(device)
 
