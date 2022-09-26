@@ -2,7 +2,7 @@ import argparse
 import random
 import numpy as np
 import torch
-from metrics import calculate_all_metrics, evaluation
+from metrics import evaluation
 from train import train
 def set_deterministic(seed=42):
     random.seed(seed)
