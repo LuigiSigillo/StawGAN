@@ -9,7 +9,7 @@ from tqdm import tqdm
 import torch.nn.functional as F
 import wandb
 from dataloader import DefaultDataset, DroneVeichleDataset
-from utils import getLabel, label2onehot, save_image
+from utils import getLabel, label2onehot, save_image, save_json
 
 from models import LPIPS, Generator, InceptionV3
 import numpy as np
@@ -27,12 +27,16 @@ def calculate_pytorch_fid(args):
     fid_scores = {}
     modals = ('imgr', 'img')
     for p in path_real:
-        mod = [m for m in modals if m != p[-8:]]
+        mod = [m for m in modals if 'train'+m != p.split('/')[-1]]
         print(mod)
         ls = 0
         for src in mod:
-            print("evaluating " + src + " to " + p[-3:])
-            eval_path = eval_root +"/val"+ src + " to val" + p[-3:]
+            if src=='img':
+                eval_path = eval_root +"/val"+ src + " to valimgr" 
+            else:
+                eval_path = eval_root +"/val"+ src + " to valimg" 
+            print("evaluating " + src + " to " + p)
+            
             dev = "cuda" if torch.cuda.is_available() else "cpu"
             x = str(subprocess.check_output(f'python -m pytorch_fid "{p}" "{eval_path}" --device {dev} --batch-size {args.eval_batch_size}',
                 shell=True))
@@ -45,8 +49,8 @@ def calculate_pytorch_fid(args):
 
 def fid_ignite(true, pred):
     fid = FID()
-    pred = torch.from_numpy(pred)
-    true = torch.from_numpy(true)
+    pred = torch.from_numpy(pred).to(device)
+    true = torch.from_numpy(true).to(device)
     if len(pred.shape) != 4:
         pred = pred.unsqueeze(1)
     if pred.size(1) != 3:
@@ -85,21 +89,25 @@ def calculate_ignite_fid(args):
     modals = ('imgr', 'img')
 
     for p in path_real:
-        mod = [m for m in modals if m != p[-8:]]
+        mod = [m for m in modals if 'train'+m != p.split('/')[-1]]
         print(mod)
         ls = 0
         for src in mod:
-            print("evaluating " + src + " to " + p[-3:])
-            eval_path = eval_root +"/val"+ src + " to val" + p[-3:]
-            true, pred = png_series_reader(p), png_series_reader(eval_path)
-            if pred.shape[0] < true.shape[0]:
-                x = fid_ignite(true[:pred.shape[0], ], pred)
+            if src=='img':
+                eval_path = eval_root +"/val"+ src + " to valimgr" 
+                to = "valimgr"
             else:
-                x = fid_ignite(true, pred[:true.shape[0],])
+                eval_path = eval_root +"/val"+ src + " to valimg"
+                to = "valimg"
+ 
+            print("evaluating " + src + " to " + p)
+            pred = jpg_series_reader(eval_path)
+            true = jpg_series_reader(p, pred.shape[0]) 
+            x = fid_ignite(true, pred)
 
-            fid_scores["FID-ignite/" + src + " to " + p[-2:]] = float(x)
+            fid_scores["FID-ignite/" + src + " to " + to] = float(x)
             ls += float(x)
-        fid_scores["FID-ignite/" + p[-2:] + "_mean"] = ls / len(mod)
+        fid_scores["FID-ignite/" + to + "_mean"] = ls / len(mod)
     return fid_scores
 
 
@@ -111,17 +119,22 @@ def calculate_ignite_inception_score(args):
     modals = ('imgr', 'img')
 
     for p in path_real:
-        mod = [m for m in modals if m != p[-8:]]
+        mod = [m for m in modals if 'train'+m != p.split('/')[-1]]
         print(mod)
         ls = 0
         for src in mod:
-            print("evaluating " + src + " to " + p[-3:])
-            eval_path = eval_root +"/val"+ src + " to val" + p[-3:]
-            pred = png_series_reader(eval_path)
+            if src=='img':
+                eval_path = eval_root +"/val"+ src + " to valimgr" 
+                to = "valimgr"
+            else:
+                eval_path = eval_root +"/val"+ src + " to valimg" 
+                to = "valimg"
+            print("evaluating " + src + " to " + p)
+            pred = jpg_series_reader(eval_path)
             x = inception_score_ignite(pred)
-            fid_scores["IS-ignite/" + src + " to " + p[-2:]] = float(x)
+            fid_scores["IS-ignite/" + src + " to " +to ] = float(x)
             ls += float(x)
-        fid_scores["IS/" + p[-2:] + "_mean"] = ls / len(mod)
+        fid_scores["IS/" + to + "_mean"] = ls / len(mod)
     return fid_scores
 
 
@@ -131,7 +144,7 @@ Stargan v2 metrics
 
 
 @torch.no_grad()
-def calculate_metrics(netG, args, mode, syneval_dataset, syneval_dataset2, device):
+def calculate_fid_stargan(netG, args, mode, syneval_dataset, syneval_dataset2, device):
     print('Calculating evaluation metrics...')
     domains = ["valimg","valimgr"]
     domains.sort()
@@ -248,34 +261,34 @@ FID
 '''
 
 
-def calculate_fid_for_all_tasks(args, domains, step, mode):
-    print('Calculating FID for all tasks...')
-    fid_values = OrderedDict()
-    for trg_domain in domains:
-        src_domains = [x for x in domains if x != trg_domain]
+# def calculate_fid_for_all_tasks(args, domains, step, mode):
+#     print('Calculating FID for all tasks...')
+#     fid_values = OrderedDict()
+#     for trg_domain in domains:
+#         src_domains = [x for x in domains if x != trg_domain]
 
-        for src_domain in src_domains:
-            task = '%s to %s' % (src_domain, trg_domain)
-            path_real = os.path.join(args.dataset_path + "train", trg_domain)
-            path_fake = os.path.join(args.eval_dir, task)
-            print('Calculating FID for %s...' % task)
-            fid_value = calculate_fid_given_paths(
-                paths=[path_real, path_fake],
-                img_size=args.image_size,
-                batch_size=args.eval_batch_size
-            )
-            fid_values['FID_%s/%s' % (mode, task)] = fid_value
+#         for src_domain in src_domains:
+#             task = '%s to %s' % (src_domain, trg_domain)
+#             path_real = os.path.join(args.dataset_path + "train", trg_domain)
+#             path_fake = os.path.join(args.eval_dir, task)
+#             print('Calculating FID for %s...' % task)
+#             fid_value = calculate_fid_given_paths(
+#                 paths=[path_real, path_fake],
+#                 img_size=args.image_size,
+#                 batch_size=args.eval_batch_size
+#             )
+#             fid_values['FID_%s/%s' % (mode, task)] = fid_value
 
-    # calculate the average FID for all tasks
-    fid_mean = 0
-    for _, value in fid_values.items():
-        fid_mean += value / len(fid_values)
-    fid_values['FID_%s/mean' % mode] = fid_mean
+#     # calculate the average FID for all tasks
+#     fid_mean = 0
+#     for _, value in fid_values.items():
+#         fid_mean += value / len(fid_values)
+#     fid_values['FID_%s/mean' % mode] = fid_mean
 
-    # report FID values
-    filename = os.path.join(args.eval_dir, 'FID_%.5i_%s.json' % (step, mode))
-    save_json(fid_values, filename)
-    return fid_values
+#     # report FID values
+#     filename = os.path.join(args.eval_dir, 'FID_%.5i_%s.json' % (step, mode))
+#     save_json(fid_values, filename)
+#     return fid_values
 
 
 
@@ -285,51 +298,51 @@ def frechet_distance(mu, cov, mu2, cov2):
     return np.real(dist)
 
 
-@torch.no_grad()
-def calculate_fid_given_paths(paths, img_size=256, batch_size=32):
-    print('Calculating FID given paths %s and %s...' % (paths[0], paths[1]))
-    inception = InceptionV3().eval().to(device)
-    loaders = [get_eval_loader(path, img_size, batch_size) for path in paths]
-    print(paths)
-    mu, cov = [], []
-    for i, loader in enumerate(loaders):
-        actvs = []
-        # print(paths[i])
-        for x in tqdm(loader, total=len(loader)):
-            try:
-                sz = x.size(1)
-                if sz == 1:
-                    actv = inception(x.repeat(1, 3, 1, 1).to(device))
-                elif sz == 3:
-                    actv = inception(x.to(device))
-                else:
-                    raise Exception("check FID dim")
-            except:
-                sz = x[0].size(1)
-                if sz == 1:
-                    actv = inception(x[0].repeat(1, 3, 1, 1).to(device))
-                elif sz == 3:
-                    actv = inception(x[0].to(device))
-                else:
-                    raise Exception("check FID dim")
+# @torch.no_grad()
+# def calculate_fid_given_paths(paths, img_size=256, batch_size=32):
+#     print('Calculating FID given paths %s and %s...' % (paths[0], paths[1]))
+#     inception = InceptionV3().eval().to(device)
+#     loaders = [get_eval_loader(path, img_size, batch_size) for path in paths]
+#     print(paths)
+#     mu, cov = [], []
+#     for i, loader in enumerate(loaders):
+#         actvs = []
+#         # print(paths[i])
+#         for x in tqdm(loader, total=len(loader)):
+#             try:
+#                 sz = x.size(1)
+#                 if sz == 1:
+#                     actv = inception(x.repeat(1, 3, 1, 1).to(device))
+#                 elif sz == 3:
+#                     actv = inception(x.to(device))
+#                 else:
+#                     raise Exception("check FID dim")
+#             except:
+#                 sz = x[0].size(1)
+#                 if sz == 1:
+#                     actv = inception(x[0].repeat(1, 3, 1, 1).to(device))
+#                 elif sz == 3:
+#                     actv = inception(x[0].to(device))
+#                 else:
+#                     raise Exception("check FID dim")
 
-            actvs.append(actv)
-        actvs = torch.cat(actvs, dim=0).cpu().detach().numpy()
-        mu.append(np.mean(actvs, axis=0))
-        cov.append(np.cov(actvs, rowvar=False))
-    fid_value = frechet_distance(mu[0], cov[0], mu[1], cov[1])
-    return fid_value
+#             actvs.append(actv)
+#         actvs = torch.cat(actvs, dim=0).cpu().detach().numpy()
+#         mu.append(np.mean(actvs, axis=0))
+#         cov.append(np.cov(actvs, rowvar=False))
+#     fid_value = frechet_distance(mu[0], cov[0], mu[1], cov[1])
+#     return fid_value
 
 
-def get_eval_loader(path, image_size, batch_size):
-    if "train" in path:
-        # return DataLoader(MyDataset(args.dataset_path+"png/"+path[-2:]),batch_size=batch_size)
-        return DataLoader(
-            ChaosDataset_Syn_Test(path=path[:-9], modal=path[-2:], split='train', gan=True, image_size=image_size),
-            batch_size=batch_size)
-    else:
-        return DataLoader(MyDataset(path), batch_size=batch_size)
-        # return ChaosDataset_Syn_Test(path=path[:-13],modal=path[-8:], split="eval",gan=True,image_size=image_size)
+# def get_eval_loader(path, image_size, batch_size):
+#     if "train" in path:
+#         # return DataLoader(MyDataset(args.dataset_path+"png/"+path[-2:]),batch_size=batch_size)
+#         return DataLoader(
+#             ChaosDataset_Syn_Test(path=path[:-9], modal=path[-2:], split='train', gan=True, image_size=image_size),
+#             batch_size=batch_size)
+#     else:
+#         return DataLoader(MyDataset(path), batch_size=batch_size)
+#         # return ChaosDataset_Syn_Test(path=path[:-13],modal=path[-8:], split="eval",gan=True,image_size=image_size)
 
 
 def DICE(Vref, Vseg):
@@ -349,14 +362,23 @@ def png_series_reader(dir):
     V = np.array(V, order='A')
     V = V.astype(bool)
     return V
+from PIL import Image
 
-def jpg_series_reader(dir):
+def jpg_series_reader(dir, mlen=None):
     V = []
-    png_file_list = glob.glob(dir + '/*.jpg')[:500]
-    png_file_list.sort()
-    for filename in png_file_list:
-        image = cv2.imread(filename, 0)
-        V.append(image)
+    jpg_file_list = glob.glob(dir + '/*.jpg')
+    png_file_list = glob.glob(dir + '/*.png')
+    tot_list = (png_file_list+jpg_file_list)
+    tot_list.sort()
+    box = (100, 100, 740, 612)
+    if mlen!=None:
+        tot_list = tot_list[:mlen]
+    for filename in tqdm(tot_list):
+        img = Image.open(filename).convert('RGB')
+        img = img.crop(box)
+        img = img.resize((256, 256), Image.ANTIALIAS)
+        img = np.asarray(img)
+        V.append(img.transpose(2, 0, 1))
     V = np.array(V, order='A')
     return V
 
@@ -409,11 +431,11 @@ def create_images_for_dice_or_s_score(args, netG, idx_eval, syneval_loader, dice
 
             if not dice_:
                 try:
-                    _, t_reconst = nets.netG(x_fake, t_fake, c_org)
+                    _, t_reconst = netG(x_fake, t_fake, c_org)
                 except:
                     d = args.device
                     args.device = 'cpu'
-                    _, t_reconst = nets.netG.cpu()(x_fake.cpu(), t_fake.cpu(), c_org.cpu())
+                    _, t_reconst = netG.cpu()(x_fake.cpu(), t_fake.cpu(), c_org.cpu())
                     args.device = d
                 t_fake = t_reconst.to(device)
             # Target-to-original domain.
@@ -447,8 +469,8 @@ def create_images_for_dice_or_s_score(args, netG, idx_eval, syneval_loader, dice
                 save_image(t_fake[k], ncol=1, filename=filename, args=args)
                 filename = os.path.join(args.eval_dir,"Ground",
                                         '%.4i_%.2i.png' % (args.sepoch * args.eval_batch_size + (k + 1), epoch + 1))
-                if t_img.size(1) == 5:
-                    t_img = t_img[:, :1]
+                # if t_img.size(1) == 5:
+                #     t_img = t_img[:, :1]
 
                 save_image(t_img[k], ncol=1, filename=filename, args=args)
     return output_mae/len(syneval_loader)
@@ -496,7 +518,7 @@ def compute_miou(validation_pred, validation_true):
 def calculate_all_metrics(args, net_G, fid_png=False, device="cuda"):
     syneval_dataset, syneval_dataset_ir = DefaultDataset("dataset/val/valimg"), \
                                          DefaultDataset("dataset/val/valimgr")
-    _, fid_stargan = calculate_metrics(net_G, args, 'test',
+    _, fid_stargan = calculate_fid_stargan(net_G, args, 'test',
                                        syneval_dataset,
                                        syneval_dataset_ir,
                                        device

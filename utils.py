@@ -7,7 +7,7 @@ from itertools import chain
 from pathlib import Path
 import wandb
 import torchvision.utils as vutils
-
+import json
 
 def denormalize(x):
     out = (x + 1) / 2
@@ -175,3 +175,7 @@ def listdir(dname):
     fnames = list(chain(*[list(Path(dname).rglob('*.' + ext))
                           for ext in ['png', 'jpg', 'jpeg', 'JPG']]))
     return fnames
+
+def save_json(json_file, filename):
+    with open(filename, 'w') as f:
+        json.dump(json_file, f, indent=4, sort_keys=False)
