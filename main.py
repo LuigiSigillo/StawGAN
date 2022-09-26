@@ -41,6 +41,7 @@ if __name__ == '__main__':
     parser.add_argument('-loss_function', type=str, default='wgan-gp+move+cycle+ugan+d+l2')
     parser.add_argument('-optimizer', type=str, default='adam')
     parser.add_argument('-note', type=str,default='affine:True;')
+    parser.add_argument('-wavelet_type', type=str,default=None) #quat
     parser.add_argument('-random_seed', type=int, default='888')
     parser.add_argument('-c_dim', type=int, default='2')
     parser.add_argument('-h_conv', type=int, default='16')

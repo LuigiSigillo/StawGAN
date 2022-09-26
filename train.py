@@ -36,10 +36,11 @@ def train(args):
         syneval_dataset.load_dataset(path=args.dataset_path+"/tensors",split="val", idx=str(idx), img_size=args.img_size, colored_data=args.color_images)
 
     in_c = 1 if not args.color_images else 3
+    in_c = in_c+4 if args.wavelet_type != None else in_c
     netG = Generator(in_c= in_c + args.c_dim, mid_c=args.G_conv, layers =2, s_layers=3, affine=True, last_ac=True,
                         colored_input=args.color_images)
     if args.pretrained_generator:
-        netG.load_state_dict(torch.load(args.save_path+"/pretrained_gen_256.pt"))
+        netG.load_state_dict(torch.load(args.save_path+"/pretrained_gen_"+str(args.img_size)+".pt"))
 
     nets = munch.Munch({"netG": netG,
                             "netD_i": Discriminator(c_dim=args.c_dim * 2, image_size=args.img_size, colored_input=args.color_images),
@@ -110,7 +111,7 @@ def train(args):
 
                 # Compute loss with fake whole images.
                 with torch.no_grad():
-                    x_fake, t_fake = nets.netG(x_real, t_img, c_trg)
+                    x_fake, t_fake = nets.netG(x_real, t_img, c_trg, wav_type=args.wavelet_type)
                 # plt.imshow(  x_fake[2].cpu().detach().permute(1, 2, 0).numpy(), cmap='gray')
                 # plt.savefig('x-fake greyscaled')
                 # raise Exception
@@ -162,7 +163,7 @@ def train(args):
 
                 #  3. Train the generator
                 # Original-to-target domain.
-                x_fake, t_fake = nets.netG(x_real, t_img, c_trg)
+                x_fake, t_fake = nets.netG(x_real, t_img, c_trg, wav_type=args.wavelet_type)
                 out_src, out_cls = nets.netD_i(x_fake)
                 g_loss_fake = -torch.mean(out_src)
                 g_loss_cls = F.binary_cross_entropy_with_logits(out_cls, g_trg, reduction='sum') / out_cls.size(0)
@@ -171,7 +172,7 @@ def train(args):
                 # print(shape_mask.shape,nets.netH(x_fake).shape )
                 # shape_loss = F.mse_loss(nets.netH(x_fake), shape_mask.float())
                 # Target-to-original domain.
-                x_reconst, t_reconst = nets.netG(x_fake, t_fake, c_org)
+                x_reconst, t_reconst = nets.netG(x_fake, t_fake, c_org, wav_type=args.wavelet_type)
                 g_loss_rec = torch.mean(torch.abs(x_real - x_reconst))
 
                 if index.shape[0] != 0:
@@ -223,7 +224,7 @@ def train(args):
 
             if (epoch + 1) % 1 == 0 and (epoch + 1) > 0:
                 # show syn images after every epoch
-                x_real,x_infrared,x_rgb, trg_orig, trg_infra_fake, trg_rgb_fake = plot_images(nets.netG_use, syneval_dataset, device, args.c_dim)
+                x_real,x_infrared,x_rgb, trg_orig, trg_infra_fake, trg_rgb_fake = plot_images(nets.netG_use, syneval_dataset, device, args.c_dim, args.wavelet_type)
                 # print(x.shape, y.shape, z.shape)
                 # plt.subplot(231)
                 # plt.imshow(  x.cpu().detach().permute(1, 2, 0).numpy()  )

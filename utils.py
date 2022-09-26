@@ -131,7 +131,7 @@ def moving_average(model, model_test, beta=0.999):
 
 
 
-def plot_images(netG_use, syneval_dataset, device, c_dim):
+def plot_images(netG_use, syneval_dataset, device, c_dim, wavelet_type):
     # fig = plt.figure(dpi=120)
     idx = random.randint(0,200)
     with torch.no_grad():
@@ -142,8 +142,8 @@ def plot_images(netG_use, syneval_dataset, device, c_dim):
         trg_orig = trg_orig.unsqueeze(dim=0).to(device)
 
         # print(getLabel(img, device, 0, args.c_dim).shape,img.shape)
-        pred_t1_img, pred_t1_targ = netG_use(img, trg_orig, c=getLabel(img, device, 0, c_dim), )
-        pred_t2_img, pred_t2_targ = netG_use(img, trg_orig, c=getLabel(img, device, 1, c_dim), )
+        pred_t1_img, pred_t1_targ = netG_use(img, trg_orig, c=getLabel(img, device, 0, c_dim),wav_type=wavelet_type)
+        pred_t2_img, pred_t2_targ = netG_use(img, trg_orig, c=getLabel(img, device, 1, c_dim), wav_type=wavelet_type)
         # plt.subplot(241)
         # plt.imshow(denorm(img).squeeze().cpu().numpy())
         # plt.title(str(i + 1) + '_source')

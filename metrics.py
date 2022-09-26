@@ -204,7 +204,7 @@ def calculate_fid_stargan(netG, args, mode, syneval_dataset, syneval_dataset2, d
                     idx = mod[trg_domain]
                     c = getLabel(x_src, device, idx, args.c_dim)
                     # x_src = x_src[:, :1, :, :]
-                    x_fake = netG(x_src, None, c, mode='test')
+                    x_fake = netG(x_src, None, c, mode='test', wav_type=args.wavelet_type)
                     group_of_images.append(x_fake)
                     # save generated images to calculate FID later
                     for k in range(N):
@@ -427,11 +427,11 @@ def create_images_for_dice_or_s_score(args, netG, idx_eval, syneval_loader, dice
 
             # good for dice
             x_fake, t_fake = netG(x_real, t_img,
-                                        c_trg)  # G(image,target_image,target_modality) --> (out_image,output_target_area_image)
+                                        c_trg, wav_type=args.wavelet_type)  # G(image,target_image,target_modality) --> (out_image,output_target_area_image)
 
             if not dice_:
                 try:
-                    _, t_reconst = netG(x_fake, t_fake, c_org)
+                    _, t_reconst = netG(x_fake, t_fake, c_org,wav_type=args.wavelet_type)
                 except:
                     d = args.device
                     args.device = 'cpu'
