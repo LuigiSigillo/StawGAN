@@ -111,15 +111,16 @@ def save_state_net(net, args, index, optim=None, experiment_name="test"):
             for i in argsDict.keys():
                 f.writelines(str(i) + ' : ' + str(argsDict[i]) + '\n')
 
-def load_state_net(net, net_name, index, optim=None, experiment_name="", device="cuda"):
-    save_path = os.path.join(save_path, experiment_name)
+def load_state_net(args, net, net_name, index, optim=None, device="cuda"):
+    save_path = os.path.join(args.save_path, args.experiment_name)
     if not os.path.isdir(save_path):
         raise Exception("wrong path")
     save_file = os.path.join(save_path, net_name)
     if net is not None:
-        net.load_state_dict(torch.load(save_file + '_' + str(index)+ "_"  + experiment_name + '.pkl', map_location=device))
+        net.load_state_dict(torch.load(save_file + '_' + str(index)+ "_"  + args.experiment_name + '.pkl', map_location=device))
     if optim is not None:
-        optim.load_state_dict(torch.load(save_file + '_optim_' + str(index)+ "_"  + experiment_name + '.pkl'))
+        optim.load_state_dict(torch.load(save_file + '_optim_' + str(index)+ "_"  + args.experiment_name + '.pkl'))
+    # print(net)
     return net, optim
 
 def moving_average(model, model_test, beta=0.999):
@@ -165,11 +166,12 @@ def plot_images(netG_use, syneval_dataset, device, c_dim):
             pred_t2_targ.cpu()
 
 
-def load_nets(nets,sepoch):
-    for net in nets.keys():
+def load_nets(args,nets,sepoch, optims):
+    optims_list= list(optims.keys())
+    for i,net in enumerate(nets.keys()):
         print("loading", net)
         net_check = net if "use" in net else net.replace("_", "")
-        load_state_net(nets[net], net_check, sepoch)
+        load_state_net(args,nets[net], net_check, sepoch, optim=optims[optims_list[i]])
 
 def listdir(dname):
     fnames = list(chain(*[list(Path(dname).rglob('*.' + ext))

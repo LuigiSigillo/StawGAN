@@ -409,11 +409,11 @@ def create_images_for_dice_or_s_score(args, netG, idx_eval, syneval_loader, dice
 
             if not dice_:
                 try:
-                    _, t_reconst = nets.netG(x_fake, t_fake, c_org)
+                    _, t_reconst = netG(x_fake, t_fake, c_org)
                 except:
                     d = args.device
                     args.device = 'cpu'
-                    _, t_reconst = nets.netG.cpu()(x_fake.cpu(), t_fake.cpu(), c_org.cpu())
+                    _, t_reconst = netG.cpu()(x_fake.cpu(), t_fake.cpu(), c_org.cpu())
                     args.device = d
                 t_fake = t_reconst.to(device)
             # Target-to-original domain.
@@ -447,8 +447,8 @@ def create_images_for_dice_or_s_score(args, netG, idx_eval, syneval_loader, dice
                 save_image(t_fake[k], ncol=1, filename=filename, args=args)
                 filename = os.path.join(args.eval_dir,"Ground",
                                         '%.4i_%.2i.png' % (args.sepoch * args.eval_batch_size + (k + 1), epoch + 1))
-                if t_img.size(1) == 5:
-                    t_img = t_img[:, :1]
+                # if t_img.size(1) == 5:
+                #     t_img = t_img[:, :1]
 
                 save_image(t_img[k], ncol=1, filename=filename, args=args)
     return output_mae/len(syneval_loader)
