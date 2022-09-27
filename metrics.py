@@ -9,9 +9,10 @@ from tqdm import tqdm
 import torch.nn.functional as F
 import wandb
 from dataloader import DefaultDataset, DroneVeichleDataset
-from utils import getLabel, label2onehot, save_image
+from utils import getLabel, label2onehot, save_image, save_json
+from PIL import Image
 
-from models import LPIPS, Generator
+from models import LPIPS, Generator, InceptionV3
 import numpy as np
 import glob
 import cv2
@@ -144,19 +145,18 @@ Stargan v2 metrics
 
 
 @torch.no_grad()
-def calculate_fid_stargan(netG, args, mode, syneval_dataset, syneval_dataset2, device):
+def generate_images_fid(netG, args, mode, eval_dataset_imgr, eval_dataset_img, device):
     print('Calculating evaluation metrics...')
     domains = ["valimg","valimgr"]
     domains.sort()
     num_domains = len(domains)
     # calculate_fid_for_all_tasks(args, domains, step=step, mode=mode)
     print('Number of domains: %d' % num_domains)
-    lpips_dict = OrderedDict()
     loaders = {
-        "valimg_loader": DataLoader(syneval_dataset, batch_size=args.eval_batch_size),
-        "valimgr_loader": DataLoader(syneval_dataset2, batch_size=args.eval_batch_size),
+        "valimgr_loader": DataLoader(eval_dataset_imgr, batch_size=args.eval_batch_size),
+        "valimg_loader": DataLoader(eval_dataset_img, batch_size=args.eval_batch_size),
     }
-    mod = {"valimg": 0, "valimgr": 1}
+    mod = {"valimgr": 0, "valimg": 1}
 
     # loaders = (syneval_dataset, syneval_dataset2,syneval_dataset3)
     # loaders = (DataLoader(syneval_dataset,batch_size=4), DataLoader(syneval_dataset2,batch_size=4),DataLoader(syneval_dataset3,batch_size=4))
@@ -164,7 +164,7 @@ def calculate_fid_stargan(netG, args, mode, syneval_dataset, syneval_dataset2, d
     for trg_idx, trg_domain in enumerate(domains):
         src_domains = [x for x in domains if x != trg_domain]
         loader_ref = loaders[trg_domain + "_loader"]
-        path_ref = os.path.join(args.dataset_path + '/val', trg_domain)
+        # path_ref = os.path.join(args.dataset_path + '/val', trg_domain)
         # loader_ref = get_eval_loader(root=path_ref,
         #                                  img_size=args.image_size,
         #                                  batch_size=args.eval_batch_size,
@@ -172,45 +172,43 @@ def calculate_fid_stargan(netG, args, mode, syneval_dataset, syneval_dataset2, d
         #                                  drop_last=True)
         for src_idx, src_domain in enumerate(src_domains):
             loader_src = loaders[src_domain + "_loader"]
-            path_src = os.path.join(args.dataset_path + '/val', src_domain)
+            # path_src = os.path.join(args.dataset_path + '/val', src_domain)
             # loader_src = get_eval_loader(root=path_src,
             #                              img_size=args.image_size,
             #                              batch_size=args.eval_batch_size,
             #                              imagenet_normalize=False)
-            task = '%s to %s' % (src_domain, trg_domain)
+            task = '%s_to_%s' % (src_domain, trg_domain)
             path_fake = os.path.join(args.eval_dir, task)
             shutil.rmtree(path_fake, ignore_errors=True)
             os.makedirs(path_fake)
-            lpips_values = []
-            print('Generating images and calculating LPIPS for %s...' % task)
+            print('Generating images for %s...' % task)
             for i, (x_src) in enumerate(tqdm(loader_src, total=len(loader_src))):
                 N = x_src.size(0)
                 x_src = x_src.to(device)
-                # y_trg = torch.tensor([trg_idx] * N).to(device)
-                # generate 10 outputs from the same input
-                group_of_images = []
-                for j in range(10):  # num outs per domain
-                    try:
-                        x_ref = next(iter_ref).to(device)
-                    except:
-                        iter_ref = iter(loader_ref)
-                        x_ref = next(iter_ref)
-                        x_ref = x_ref.to(device)
 
-                    if x_ref.size(0) > N:
-                        x_ref = x_ref[:N]
-                    # idx = random.choice([0,1,2]) #parte da zoomare?
-                    # x_src_batch = x_src.unsqueeze(0)
-                    idx = mod[trg_domain]
-                    c = getLabel(x_src, device, idx, args.c_dim)
-                    # x_src = x_src[:, :1, :, :]
-                    x_fake = netG(x_src, None, c, mode='test', wav_type=args.wavelet_type)
-                    group_of_images.append(x_fake)
-                    # save generated images to calculate FID later
-                    for k in range(N):
-                        filename = os.path.join(path_fake,
-                                                '%.4i_%.2i.png' % (i * args.eval_batch_size + (k + 1), j + 1))
-                        save_image(x_fake[k], ncol=1, filename=filename, args=args)
+                # y_trg = torch.tensor([trg_idx] * N).to(device)
+                group_of_images = []
+                try:
+                    x_ref = next(iter_ref).to(device)
+                except:
+                    iter_ref = iter(loader_ref)
+                    x_ref = next(iter_ref).to(device)
+
+                if x_ref.size(0) > N:
+                    x_ref = x_ref[:N]
+                
+                # idx = random.choice([0,1,2]) #parte da zoomare?
+                # x_src_batch = x_src.unsqueeze(0)
+                idx = mod[trg_domain]
+                c = getLabel(x_src, device, idx, args.c_dim)
+                # x_src = x_src[:, :1, :, :]
+                x_fake = netG(x_src, None, c, mode='test', wav_type=args.wavelet_type)
+                group_of_images.append(x_fake)
+                
+                # save generated images to calculate FID later
+                for k in range(N):
+                    filename = os.path.join(path_fake,'%.4i.png' % (i * args.eval_batch_size + (k + 1)))
+                    save_image(x_fake[k], ncol=1, filename=filename, args=args)
 
                 # lpips_value = calculate_lpips_given_images(group_of_images)
                 # lpips_values.append(lpips_value)
@@ -235,7 +233,7 @@ def calculate_fid_stargan(netG, args, mode, syneval_dataset, syneval_dataset2, d
     # filename = os.path.join(args.eval_dir, 'LPIPS_%.5i_%s.json' % (step, mode))
     # save_json(lpips_dict, filename)
     # calculate and report fid values
-    return lpips_dict, {}  # calculate_fid_for_all_tasks(args, domains, step=step, mode=mode)
+    
 
 
 
@@ -261,34 +259,34 @@ FID
 '''
 
 
-# def calculate_fid_for_all_tasks(args, domains, step, mode):
-#     print('Calculating FID for all tasks...')
-#     fid_values = OrderedDict()
-#     for trg_domain in domains:
-#         src_domains = [x for x in domains if x != trg_domain]
+def calculate_fid_for_all_tasks(args, domains, step, mode):
+    print('Calculating FID for all tasks...')
+    fid_values = OrderedDict()
+    for trg_domain in domains:
+        src_domains = [x for x in domains if x != trg_domain]
 
-#         for src_domain in src_domains:
-#             task = '%s to %s' % (src_domain, trg_domain)
-#             path_real = os.path.join(args.dataset_path + "train", trg_domain)
-#             path_fake = os.path.join(args.eval_dir, task)
-#             print('Calculating FID for %s...' % task)
-#             fid_value = calculate_fid_given_paths(
-#                 paths=[path_real, path_fake],
-#                 img_size=args.image_size,
-#                 batch_size=args.eval_batch_size
-#             )
-#             fid_values['FID_%s/%s' % (mode, task)] = fid_value
+        for src_domain in src_domains:
+            task = '%s_to_%s' % (src_domain, trg_domain)
+            path_real = os.path.join(args.dataset_path + "/train", trg_domain.replace("val", "train"))
+            path_fake = os.path.join(args.eval_dir, task)
+            print('Calculating FID for %s...' % task)
+            fid_value = calculate_fid_given_paths(
+                paths=[path_real, path_fake],
+                img_size=args.img_size,
+                batch_size=args.eval_batch_size
+            )
+            fid_values['FID_%s/%s' % (mode, task)] = fid_value
 
-#     # calculate the average FID for all tasks
-#     fid_mean = 0
-#     for _, value in fid_values.items():
-#         fid_mean += value / len(fid_values)
-#     fid_values['FID_%s/mean' % mode] = fid_mean
+    # calculate the average FID for all tasks
+    fid_mean = 0
+    for _, value in fid_values.items():
+        fid_mean += value / len(fid_values)
+    fid_values['FID_%s/mean' % mode] = fid_mean
 
-#     # report FID values
-#     filename = os.path.join(args.eval_dir, 'FID_%.5i_%s.json' % (step, mode))
-#     save_json(fid_values, filename)
-#     return fid_values
+    # report FID values
+    filename = os.path.join(args.eval_dir, 'FID_%.5i_%s.json' % (step, mode))
+    save_json(fid_values, filename)
+    return fid_values
 
 
 
@@ -298,51 +296,44 @@ def frechet_distance(mu, cov, mu2, cov2):
     return np.real(dist)
 
 
-# @torch.no_grad()
-# def calculate_fid_given_paths(paths, img_size=256, batch_size=32):
-#     print('Calculating FID given paths %s and %s...' % (paths[0], paths[1]))
-#     inception = InceptionV3().eval().to(device)
-#     loaders = [get_eval_loader(path, img_size, batch_size) for path in paths]
-#     print(paths)
-#     mu, cov = [], []
-#     for i, loader in enumerate(loaders):
-#         actvs = []
-#         # print(paths[i])
-#         for x in tqdm(loader, total=len(loader)):
-#             try:
-#                 sz = x.size(1)
-#                 if sz == 1:
-#                     actv = inception(x.repeat(1, 3, 1, 1).to(device))
-#                 elif sz == 3:
-#                     actv = inception(x.to(device))
-#                 else:
-#                     raise Exception("check FID dim")
-#             except:
-#                 sz = x[0].size(1)
-#                 if sz == 1:
-#                     actv = inception(x[0].repeat(1, 3, 1, 1).to(device))
-#                 elif sz == 3:
-#                     actv = inception(x[0].to(device))
-#                 else:
-#                     raise Exception("check FID dim")
+@torch.no_grad()
+def calculate_fid_given_paths(paths, img_size=256, batch_size=32):
+    print('Calculating FID given paths %s and %s...' % (paths[0], paths[1]))
+    inception = InceptionV3().eval().to(device)
+    loaders = [get_eval_loader(path, img_size, batch_size) for path in paths]
+    print(paths)
+    mu, cov = [], []
+    for i, loader in enumerate(loaders):
+        actvs = []
+        # print(paths[i])
+        for x in tqdm(loader, total=len(loader)):
+            try:
+                sz = x.size(1)
+                if sz == 1:
+                    actv = inception(x.repeat(1, 3, 1, 1).to(device))
+                elif sz == 3:
+                    actv = inception(x.to(device))
+                else:
+                    raise Exception("check FID dim")
+            except:
+                sz = x[0].size(1)
+                if sz == 1:
+                    actv = inception(x[0].repeat(1, 3, 1, 1).to(device))
+                elif sz == 3:
+                    actv = inception(x[0].to(device))
+                else:
+                    raise Exception("check FID dim")
 
-#             actvs.append(actv)
-#         actvs = torch.cat(actvs, dim=0).cpu().detach().numpy()
-#         mu.append(np.mean(actvs, axis=0))
-#         cov.append(np.cov(actvs, rowvar=False))
-#     fid_value = frechet_distance(mu[0], cov[0], mu[1], cov[1])
-#     return fid_value
+            actvs.append(actv)
+        actvs = torch.cat(actvs, dim=0).cpu().detach().numpy()
+        mu.append(np.mean(actvs, axis=0))
+        cov.append(np.cov(actvs, rowvar=False))
+    fid_value = frechet_distance(mu[0], cov[0], mu[1], cov[1])
+    return fid_value
 
 
-# def get_eval_loader(path, image_size, batch_size):
-#     if "train" in path:
-#         # return DataLoader(MyDataset(args.dataset_path+"png/"+path[-2:]),batch_size=batch_size)
-#         return DataLoader(
-#             ChaosDataset_Syn_Test(path=path[:-9], modal=path[-2:], split='train', gan=True, image_size=image_size),
-#             batch_size=batch_size)
-#     else:
-#         return DataLoader(MyDataset(path), batch_size=batch_size)
-#         # return ChaosDataset_Syn_Test(path=path[:-13],modal=path[-8:], split="eval",gan=True,image_size=image_size)
+def get_eval_loader(path, image_size, batch_size):
+    return DataLoader(DefaultDataset(path, img_size=image_size), batch_size=batch_size)
 
 
 def DICE(Vref, Vseg):
@@ -362,7 +353,6 @@ def png_series_reader(dir):
     V = np.array(V, order='A')
     V = V.astype(bool)
     return V
-from PIL import Image
 
 def jpg_series_reader(dir, mlen=None):
     V = []
@@ -515,14 +505,15 @@ def compute_miou(validation_pred, validation_true):
     return iou
 
 
-def calculate_all_metrics(args, net_G, fid_png=False, device="cuda"):
-    syneval_dataset, syneval_dataset_ir = DefaultDataset("dataset/val/valimg"), \
-                                         DefaultDataset("dataset/val/valimgr")
-    _, fid_stargan = calculate_fid_stargan(net_G, args, 'test',
-                                       syneval_dataset,
-                                       syneval_dataset_ir,
+def calculate_all_metrics(args, net_G, device="cuda"):
+    eval_dataset_imgr, eval_dataset_img = DefaultDataset("dataset/val/valimgr"), \
+                                         DefaultDataset("dataset/val/valimg")
+    generate_images_fid(net_G, args, 'test',
+                                       eval_dataset_imgr,
+                                       eval_dataset_img,
                                        device
                                        )
+    fid_stargan = calculate_fid_for_all_tasks(args, domains = ["valimg","valimgr"], step=args.epoch*10, mode="stargan")
     fid_dict = calculate_pytorch_fid(args)
     fid_ignite_dict = calculate_ignite_fid(args)
     IS_ignite_dict = calculate_ignite_inception_score(args)
@@ -539,9 +530,12 @@ def calculate_all_metrics(args, net_G, fid_png=False, device="cuda"):
     syneval_loader = DataLoader(syneval_dataset_tot, shuffle=True, batch_size=args.eval_batch_size)    
     for i in range(2):  # 2 domains
         # ======= Directories =======
-        ground_dir = os.path.normpath('results/Ground')
-        seg_dir = os.path.normpath('results/Segmentation')
-
+        ground_dir = os.path.normpath(args.eval_dir+'/Ground')
+        seg_dir = os.path.normpath(args.eval_dir+'/Segmentation')
+        # from torchmetrics import Dice
+        # Vref = jpg_series_reader(ground_dir)
+        # Vseg = jpg_series_reader(seg_dir)
+        # print(Dice(torch.from_numpy(Vseg), torch.from_numpy(Vref)))
         mae_dict["mae/" + mod[i]] = create_images_for_dice_or_s_score(args, net_G, i, syneval_loader, dice_=True, calculate_mae=True)
         # ======= Volume Reading =======
         Vref = png_series_reader(ground_dir)
@@ -572,15 +566,14 @@ def calculate_all_metrics(args, net_G, fid_png=False, device="cuda"):
 
 
 
-def evaluation(args,):
+def evaluation(args):
     ii = args.sepoch * 650
-    net_G = Generator(in_c= 3 + args.c_dim, 
-                                mid_c=args.G_conv, 
-                                layers =2, s_layers=3, 
-                                affine=True, last_ac=True,
-                                colored_input=True).to(device)
-    net_G.load_state_dict(torch.load(args.save_path+"/"+args.experiment_name+"/netG_use_500_color_targan_lr1e-2.pkl",
-    map_location=device))
+    in_c = 1 if not args.color_images else 3
+    in_c_gen = in_c+4 if args.wavelet_type != None else in_c
+    net_G = Generator(in_c=in_c_gen + args.c_dim, mid_c=args.G_conv, layers=2, s_layers=3, affine=True, last_ac=True,
+                     colored_input=args.color_images, wav=args.wavelet_type).to(device)
+    ep = str(args.epoch) if not args.preloaded_data else str(args.epoch*10)
+    net_G.load_state_dict(torch.load(args.save_path+"/"+args.experiment_name+"/netG_use_"+ep+"_"+args.experiment_name+".pkl", map_location=device))
     with wandb.init(config=args, project="targan_drone") as run:
         wandb.run.name = args.experiment_name
         fid_stargan, fid_dict, dice_dict, s_score_dict, iou_dict, IS_ignite_dict, fid_ignite_dict, mae_dict = calculate_all_metrics(args, net_G)
