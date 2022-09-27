@@ -136,11 +136,12 @@ class Decoder(nn.Module):
 class Generator(nn.Module):
     # the G of TarGAN
 
-    def __init__(self, in_c, mid_c, layers, s_layers, affine, last_ac=True, colored_input=False):
+    def __init__(self, in_c, mid_c, layers, s_layers, affine, last_ac=True, colored_input=False, wav=False):
         super(Generator, self).__init__()
         self.img_encoder = Encoder(in_c, mid_c, layers, affine)
         self.img_decoder = Decoder(mid_c * (2 ** layers), mid_c * (2 ** (layers - 1)), layers, affine,64)
-        self.target_encoder = Encoder(in_c, mid_c, layers, affine)
+        in_c_targ = in_c-4 if wav is not None else in_c
+        self.target_encoder = Encoder(in_c_targ, mid_c, layers, affine)
         self.target_decoder = Decoder(mid_c * (2 ** layers), mid_c * (2 ** (layers - 1)), layers, affine,64)
         self.share_net = ShareNet(mid_c * (2 ** (layers - 1)), mid_c * (2 ** (layers - 1 + s_layers)), s_layers, affine,256)
         self.out_img = nn.Conv2d(mid_c, 1 if not colored_input else 3, 1, bias=bias)
@@ -150,9 +151,10 @@ class Generator(nn.Module):
     def forward(self, img, tumor=None, c=None, mode="train", wav_type=None):
         c = c.view(c.size(0), c.size(1), 1, 1)
         c = c.repeat(1, 1, img.size(2), img.size(3))
-        img = torch.cat([img, c], dim=1)
         if wav_type != None:
             img = torch.cat([img, create_wavelet_from_input_tensor(img, c, wav_type)], dim=1)
+        img = torch.cat([img, c], dim=1)
+
         x_1 = self.img_encoder(img)
         s_1 = self.share_net(x_1)
         res_img = self.out_img(self.img_decoder(s_1,x_1))
@@ -369,8 +371,9 @@ class InceptionV3(nn.Module):
 @torch.no_grad()
 def create_wavelet_from_input_tensor(inputs, mods, wav_type ):
     modalities = ["ir" if mods[i][0].any()==1 else "rgb" if mods[i][1].any()==1 else "" for i in range(mods.size(0))]
+    # .permute(1, 2,0)
     lst = [
-        torch.from_numpy(wavelet_wrapper(wav_type, chunk.squeeze().permute(1, 2,0).cpu().detach().numpy(), chunk.size(2), modalities[i])).type(torch.FloatTensor)
+        torch.from_numpy(wavelet_wrapper(wav_type, chunk.squeeze().cpu().detach(), chunk.size(2), modalities[i])).type(torch.FloatTensor)
         for i,chunk in enumerate(torch.split(inputs.detach(), 1, dim=0))
         ]
     return torch.stack(lst, dim=0).to(device)

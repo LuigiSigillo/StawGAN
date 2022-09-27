@@ -36,9 +36,9 @@ def train(args):
         syneval_dataset.load_dataset(path=args.dataset_path+"/tensors",split="val", idx=str(idx), img_size=args.img_size, colored_data=args.color_images)
 
     in_c = 1 if not args.color_images else 3
-    in_c = in_c+4 if args.wavelet_type != None else in_c
-    netG = Generator(in_c= in_c + args.c_dim, mid_c=args.G_conv, layers =2, s_layers=3, affine=True, last_ac=True,
-                        colored_input=args.color_images)
+    in_c_gen = in_c+4 if args.wavelet_type != None else in_c
+    netG = Generator(in_c= in_c_gen + args.c_dim, mid_c=args.G_conv, layers =2, s_layers=3, affine=True, last_ac=True,
+                        colored_input=args.color_images, wav=args.wavelet_type)
     if args.pretrained_generator:
         netG.load_state_dict(torch.load(args.save_path+"/pretrained_gen_"+str(args.img_size)+".pt"))
 
@@ -59,7 +59,7 @@ def train(args):
 
 
     if args.sepoch>0:
-        load_nets(args,nets,25, optims)
+        load_nets(args,nets,args.sepoch, optims)
     nets['netG_use'] = copy.deepcopy(netG)
     nets.netG_use.to(device)
 

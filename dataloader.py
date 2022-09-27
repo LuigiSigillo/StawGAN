@@ -492,9 +492,9 @@ def wavelet_quat(image,image_size, modality):
 
 @torch.no_grad()
 def wavelet_real(img, image_size):
-    print(img.shape)
+    if img.shape[1] >1:
+        img = grayscale(img).squeeze().numpy()
     img = cv2.resize(img, (image_size * 2 - 4, image_size * 2 - 4))
-    print(img.shape)
     ll, lh, hl, hh = wavelet_transformation(img)
 
     qs = np.stack((ll, lh, hl, hh), axis=2)
@@ -535,7 +535,6 @@ def wavelet_real(img, image_size):
     train = qs
     train =(train - np.min(train))/np.ptp(train)
     '''
-    print(train.shape)
     # train = np.reshape(train, (
     # train.shape[2], train.shape[0], train.shape[1]))  # array of float32 (4,256,256) valori [0,1]
     train = np.transpose(train, (2, 0, 1))
