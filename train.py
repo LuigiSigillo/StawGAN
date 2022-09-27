@@ -1,3 +1,4 @@
+from metrics import calculate_all_metrics
 from models import Generator, Discriminator, ShapeUNet
 from dataloader import *
 from torch.utils.data import DataLoader
@@ -296,32 +297,27 @@ def train(args):
                 args.net_name = 'netH'
                 save_state_net(nets.netH, args, epoch + 1,
                                optims.h_optimizier, args.experiment_name)
-                # fidstar, fid, dice, ravd, s_score, fid_giov, iou_dict, IS_ignite_dict, fid_ignite_dict, mae_dict = calculate_all_metrics(nets.nets,
-                #                                                                     syneval_dataset,
-                #                                                                     syneval_dataset2,
-                #                                                                     syneval_dataset3,
-                #                                                                     syneval_loader)
-                # wandb.log(dict(fidstar), step=ii + 1, commit=False)
-                # wandb.log(dict(fid), step=ii + 1, commit=False)
-                # wandb.log(dict(fid_giov), step=ii + 1, commit=False)
-                # wandb.log(dict(IS_ignite_dict), step=ii + 1, commit=False)
-                # wandb.log(dict(fid_ignite_dict), step=ii + 1, commit=False)
+            if (epoch+1) % args.eval_every == 0:
+                fid_stargan, fid_dict, dice_dict, s_score_dict, iou_dict, IS_ignite_dict, fid_ignite_dict, mae_dict = calculate_all_metrics(args, nets.net_G)
+                wandb.log(dict(fid_stargan), step=ii + 1, commit=False)
+                wandb.log(dict(fid_dict), step=ii + 1, commit=False)
+                wandb.log(dict(IS_ignite_dict), step=ii + 1, commit=False)
+                wandb.log(dict(fid_ignite_dict), step=ii + 1, commit=False)
 
-                # wandb.log(dict(dice), step=ii + 1, commit=False)
-                # wandb.log(dict(ravd), step=ii + 1, commit=False)
-                # wandb.log(dict(iou_dict), step=ii + 1, commit=False)
-                # wandb.log(dict(mae_dict), step=ii + 1, commit=False)
-                # wandb.log(dict(s_score), step=ii + 1, commit=False)
-                # formatt = args.experiment_name +"                                      & {:.6f}  & {:.6f}       & {:.6f}                         & {:.6f}  & {:.6f}     & {:.6f}  & \multicolumn{{3}}{{c}} {:.6f}           \\ ".format(
-                #     fid_giov["FID_giov_/mean"],
-                #     (fid_ignite_dict["FID-ignite/ct_mean"]+fid_ignite_dict["FID-ignite/t1_mean"]+fid_ignite_dict["FID-ignite/t2_mean"])/3,
-                #     (IS_ignite_dict["IS/ct_mean"]+IS_ignite_dict["IS/t1_mean"]+IS_ignite_dict["IS/t2_mean"])/3,
-                #     (dice["DICE/ct"]+dice["DICE/t1"]+dice["DICE/t2"])/3,
-                #     (s_score["S-SCORE/ct"]+s_score["S-SCORE/t1"]+s_score["S-SCORE/t2"])/3,
-                #     (iou_dict["IoU/ct"]+iou_dict["IoU/t1"]+iou_dict["IoU/t2"])/3,
-                #     (mae_dict["mae/ct"]+mae_dict["mae/t1"]+mae_dict["mae/t2"])/3,
-                # )
-                # wandb.log({"latex_string":formatt},step=ii + 1, commit=True)
+                wandb.log(dict(dice_dict), step=ii + 1, commit=False)
+                wandb.log(dict(iou_dict), step=ii + 1, commit=False)
+                wandb.log(dict(mae_dict), step=ii + 1, commit=False)
+                wandb.log(dict(s_score_dict), step=ii + 1, commit=False)
+                formatt = args.experiment_name +"        & {:.6f} & {:.6f} & {:.6f}  & {:.6f}  & {:.6f}     & {:.6f}  & {:.6f}           \\ ".format(
+                    (fid_stargan["FID/mg_mean"]+fid_stargan["FID/gr_mean"])/2,
+                    (fid_ignite_dict["FID-ignite/valimg_mean"]+fid_ignite_dict["FID-ignite/valimgr_mean"])/2,
+                    (IS_ignite_dict["IS/valimg_mean"]+IS_ignite_dict["IS/valimgr_mean"])/2,
+                    (dice_dict["DICE/img"]+dice_dict["DICE/imgr"])/2,
+                    (s_score_dict["S-SCORE/img"]+s_score_dict["S-SCORE/imgr"])/2,
+                    (iou_dict["IoU/img"]+iou_dict["IoU/imgr"])/2,
+                    (mae_dict["mae/img"]+mae_dict["mae/imgr"])/2,
+                )
+                wandb.log({"latex_string":formatt},step=ii + 1, commit=True)
             if (epoch + 1) % 1 == 0:
                 elapsed = time.time() - start_time
                 elapsed = str(datetime.timedelta(seconds=elapsed))[:-7]
