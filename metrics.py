@@ -509,8 +509,6 @@ def compute_miou(validation_pred, validation_true):
 
     return iou
 
-from statistics import mean
-
 def calculate_metrics_segmentation(args, net_G):
     mod = ['imgr', 'img']
     dice_dict, s_score_dict, iou_dict, mae_dict = {}, {}, {}, {}
@@ -554,10 +552,10 @@ def calculate_metrics_segmentation(args, net_G):
             s_score_dict["S-SCORE/" + mod[i]+str(idx)] = s_score
     dice_d, s_score_d, iou_d, mae_d =  {}, {}, {}, {}
     for i in range(len(mod)):
-        dice_d["DICE/" + mod[i]] = mean([dice_dict["DICE/" + mod[i]+str(idx)] for idx in range(tot_rep)])
-        s_score_d["S-SCORE/" + mod[i]] = mean([s_score_dict["S-SCORE/"+ mod[i]+str(idx)] for idx in range(tot_rep)])
-        iou_d["IoU/" + mod[i]] = mean([iou_dict["IoU/" + mod[i]+str(idx)] for idx in range(tot_rep)])
-        mae_d["mae/" + mod[i]] = mean([mae_dict["mae/" + mod[i]+str(idx)] for idx in range(tot_rep)])
+        dice_d["DICE/" + mod[i]] = sum([dice_dict["DICE/" + mod[i]+str(idx)] for idx in range(tot_rep)])/tot_rep
+        s_score_d["S-SCORE/" + mod[i]] = sum([s_score_dict["S-SCORE/"+ mod[i]+str(idx)] for idx in range(tot_rep)])/tot_rep
+        iou_d["IoU/" + mod[i]] = sum([iou_dict["IoU/" + mod[i]+str(idx)] for idx in range(tot_rep)])/tot_rep
+        mae_d["mae/" + mod[i]] = sum([mae_dict["mae/" + mod[i]+str(idx)] for idx in range(tot_rep)])/tot_rep
 
     return dice_d, s_score_d, iou_d, mae_d 
 
@@ -583,8 +581,8 @@ def calculate_all_metrics(args, net_G, device="cuda"):
     os.makedirs(args.eval_dir, exist_ok=True)
 
     fid_stargan, fid_dict, IS_ignite_dict, fid_ignite_dict = calculae_metrics_translation(args, net_G)
-    #dice_dict, s_score_dict, iou_dict, mae_dict = calculate_metrics_segmentation(args, net_G)
-
+    dice_dict, s_score_dict, iou_dict, mae_dict = calculate_metrics_segmentation(args, net_G)
+    print(dice_dict, s_score_dict, iou_dict, mae_dict)
     return fid_stargan, fid_dict, dice_dict, s_score_dict, iou_dict, IS_ignite_dict, fid_ignite_dict, mae_dict
 
 
