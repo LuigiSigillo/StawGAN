@@ -56,6 +56,9 @@ if __name__ == '__main__':
     parser.add_argument('-w_g_cross', type=float, default=50.0)
     parser.add_argument('-w_shape', type=float, default=1)
     parser.add_argument('-w_cycle', type=float, default=1)
+    parser.add_argument('-loss_ssim', type=float, default=1)
+    parser.add_argument('-w_ssim', type=float, default=1)
+
     args = parser.parse_args()
     print(args)
     set_deterministic(args.random_seed)

@@ -1,4 +1,6 @@
+from codecs import ignore_errors
 import os
+import random
 import shutil
 from collections import OrderedDict
 
@@ -33,18 +35,20 @@ def calculate_pytorch_fid(args):
         ls = 0
         for src in mod:
             if src=='img':
-                eval_path = eval_root +"/val"+ src + " to valimgr" 
-            else:
-                eval_path = eval_root +"/val"+ src + " to valimg" 
-            print("evaluating " + src + " to " + p)
+                eval_path = eval_root +"/val"+ src + "_to_valimgr"
+                to = "valimgr" 
+            elif src=='imgr':
+                eval_path = eval_root +"/val"+ src + "_to_valimg"
+                to = "valimg" 
+            print("evaluating " + src + " to " + to)
             
             dev = "cuda" if torch.cuda.is_available() else "cpu"
             x = str(subprocess.check_output(f'python -m pytorch_fid "{p}" "{eval_path}" --device {dev} --batch-size {args.eval_batch_size}',
                 shell=True))
             x = x.split(' ')[-1][:-3]
-            fid_scores["FID/" + src + " to " + p[-2:]] = float(x)
+            fid_scores["FID/" + src + " to " + to] = float(x)
             ls += float(x)
-        fid_scores["FID/" + p[-2:] + "_mean"] = ls / len(mod)
+        fid_scores["FID/" + to+ "_mean"] = ls / len(mod)
     return fid_scores
 
 
@@ -61,6 +65,7 @@ def fid_ignite(true, pred):
         true = true.unsqueeze(1)
     if true.size(1) != 3:
         true = true.repeat(1, 3, 1, 1)
+    print(pred.shape, true.shape)
     fid.update([pred, true])
 
     valid_fid = fid.compute()
@@ -91,17 +96,17 @@ def calculate_ignite_fid(args):
 
     for p in path_real:
         mod = [m for m in modals if 'train'+m != p.split('/')[-1]]
-        print(mod)
         ls = 0
         for src in mod:
             if src=='img':
-                eval_path = eval_root +"/val"+ src + " to valimgr" 
+                eval_path = eval_root +"/val"+ src + "_to_valimgr" 
                 to = "valimgr"
             else:
-                eval_path = eval_root +"/val"+ src + " to valimg"
+                eval_path = eval_root +"/val"+ src + "_to_valimg"
                 to = "valimg"
  
-            print("evaluating " + src + " to " + p)
+            print("evaluating " + src + " to " + to)
+            print("path predictions:", eval_path, "\n path true:", p)
             pred = jpg_series_reader(eval_path)
             true = jpg_series_reader(p, pred.shape[0]) 
             x = fid_ignite(true, pred)
@@ -125,12 +130,12 @@ def calculate_ignite_inception_score(args):
         ls = 0
         for src in mod:
             if src=='img':
-                eval_path = eval_root +"/val"+ src + " to valimgr" 
+                eval_path = eval_root +"/val"+ src + "_to_valimgr" 
                 to = "valimgr"
             else:
-                eval_path = eval_root +"/val"+ src + " to valimg" 
+                eval_path = eval_root +"/val"+ src + "_to_valimg" 
                 to = "valimg"
-            print("evaluating " + src + " to " + p)
+            print("evaluating " + src + " to " + to)
             pred = jpg_series_reader(eval_path)
             x = inception_score_ignite(pred)
             fid_scores["IS-ignite/" + src + " to " +to ] = float(x)
@@ -359,14 +364,14 @@ def jpg_series_reader(dir, mlen=None):
     jpg_file_list = glob.glob(dir + '/*.jpg')
     png_file_list = glob.glob(dir + '/*.png')
     tot_list = (png_file_list+jpg_file_list)
-    tot_list.sort()
+    random.shuffle(tot_list)
     box = (100, 100, 740, 612)
     if mlen!=None:
         tot_list = tot_list[:mlen]
     for filename in tqdm(tot_list):
-        img = Image.open(filename).convert('RGB')
+        img = Image.open(filename).convert("RGB")
         img = img.crop(box)
-        img = img.resize((256, 256), Image.ANTIALIAS)
+        img = img.resize((256, 256))
         img = np.asarray(img)
         V.append(img.transpose(2, 0, 1))
     V = np.array(V, order='A')
@@ -505,62 +510,79 @@ def compute_miou(validation_pred, validation_true):
     return iou
 
 
-def calculate_all_metrics(args, net_G, device="cuda"):
-    eval_dataset_imgr, eval_dataset_img = DefaultDataset("dataset/val/valimgr"), \
-                                         DefaultDataset("dataset/val/valimg")
+def calculate_metrics_segmentation(args, net_G):
+    mod = ['imgr', 'img']
+    dice_dict, s_score_dict, iou_dict, mae_dict = {}, {}, {}, {}
+    tot_rep = 2 if args.preloaded_data else 1
+
+    for idx in tqdm(range(tot_rep)):
+        if args.preloaded_data:
+            syneval_dataset_tot = DroneVeichleDataset(path=args.dataset_path, split='val', colored_data=args.color_images)
+            syneval_dataset_tot.load_dataset(path=args.dataset_path+"/tensors",split="val", idx=str(idx), img_size=args.img_size, colored_data=args.color_images)
+        else:
+            syneval_dataset_tot = DroneVeichleDataset(path=args.dataset_path, split='val', colored_data=args.color_images)
+        syneval_loader = DataLoader(syneval_dataset_tot, shuffle=True, batch_size=args.eval_batch_size)    
+
+        for i in tqdm(range(2)):  # 2 domains
+            # ======= Directories =======
+            ground_dir = os.path.normpath(args.eval_dir+'/Ground')
+            seg_dir = os.path.normpath(args.eval_dir+'/Segmentation')
+            # from torchmetrics import Dice
+            # Vref = jpg_series_reader(ground_dir)
+            # Vseg = jpg_series_reader(seg_dir)
+            # print(Dice(torch.from_numpy(Vseg), torch.from_numpy(Vref)))
+            mae_dict["mae/" + mod[i]] = create_images_for_dice_or_s_score(args, net_G, i, syneval_loader, dice_=True, calculate_mae=True)
+            # ======= Volume Reading =======
+            Vref = png_series_reader(ground_dir)
+            Vseg = png_series_reader(seg_dir)
+            print('Volumes imported.')
+            # ======= Evaluation =======
+            print('Calculating for  modality ...', mod[i])
+            dice = DICE(Vref, Vseg)
+            dice_dict["DICE/" + mod[i]] = dice
+
+            iou = compute_miou(Vref, Vseg)
+            iou_dict["IoU/" + mod[i]] = iou
+
+            # calculate s score
+            create_images_for_dice_or_s_score(args, net_G, i, syneval_loader, dice_=False)
+            # ======= Volume Reading =======
+            Vref = png_series_reader(ground_dir)
+            Vseg = png_series_reader(seg_dir)
+            s_score = DICE(Vref, Vseg)
+            s_score_dict["S-SCORE/" + mod[i]] = s_score
+
+            # if dice_:
+            #     print('DICE=%.3f RAVD=%.3f ' %(dice, ravd))
+            # else:
+            #     print('S-score = %.3f' %(dice))
+
+
+    return dice_dict, s_score_dict, iou_dict, mae_dict
+
+
+def calculae_metrics_translation(args, net_G):
+    eval_dataset_imgr, eval_dataset_img = DefaultDataset(args.dataset_path+"/val/valimgr"), \
+                                         DefaultDataset(args.dataset_path+"/val/valimg")
     generate_images_fid(net_G, args, 'test',
-                                       eval_dataset_imgr,
-                                       eval_dataset_img,
-                                       device
-                                       )
+                                      eval_dataset_imgr,
+                                      eval_dataset_img,
+                                      device
+                                      )
     fid_stargan = calculate_fid_for_all_tasks(args, domains = ["valimg","valimgr"], step=args.epoch*10, mode="stargan")
     fid_dict = calculate_pytorch_fid(args)
     fid_ignite_dict = calculate_ignite_fid(args)
     IS_ignite_dict = calculate_ignite_inception_score(args)
 
+    return fid_stargan, fid_dict, IS_ignite_dict, fid_ignite_dict 
 
-    mod = ['imgr', 'img']
-    dice_dict, s_score_dict, iou_dict, mae_dict = {}, {}, {}, {}
-    if args.preloaded_data:
-        syneval_dataset_tot = DroneVeichleDataset(to_be_loaded=True)
-        syneval_dataset_tot.load_dataset(path=args.dataset_path+"/tensors",split="val", idx=str(0), img_size=args.img_size, colored_data=args.color_images)
-    else:
-        syneval_dataset_tot = DroneVeichleDataset(path=args.dataset_path, split='val', colored_data=args.color_images)
 
-    syneval_loader = DataLoader(syneval_dataset_tot, shuffle=True, batch_size=args.eval_batch_size)    
-    for i in range(2):  # 2 domains
-        # ======= Directories =======
-        ground_dir = os.path.normpath(args.eval_dir+'/Ground')
-        seg_dir = os.path.normpath(args.eval_dir+'/Segmentation')
-        # from torchmetrics import Dice
-        # Vref = jpg_series_reader(ground_dir)
-        # Vseg = jpg_series_reader(seg_dir)
-        # print(Dice(torch.from_numpy(Vseg), torch.from_numpy(Vref)))
-        mae_dict["mae/" + mod[i]] = create_images_for_dice_or_s_score(args, net_G, i, syneval_loader, dice_=True, calculate_mae=True)
-        # ======= Volume Reading =======
-        Vref = png_series_reader(ground_dir)
-        Vseg = png_series_reader(seg_dir)
-        print('Volumes imported.')
-        # ======= Evaluation =======
-        print('Calculating for  modality ...', mod[i])
-        dice = DICE(Vref, Vseg)
-        dice_dict["DICE/" + mod[i]] = dice
+def calculate_all_metrics(args, net_G, device="cuda"):
+    args.eval_dir=os.path.join(args.eval_dir, args.experiment_name)
+    os.makedirs(args.eval_dir, exist_ok=True)
 
-        iou = compute_miou(Vref, Vseg)
-        iou_dict["IoU/" + mod[i]] = iou
-
-        # calculate s score
-        create_images_for_dice_or_s_score(args, net_G, i, syneval_loader, dice_=False)
-        # ======= Volume Reading =======
-        Vref = png_series_reader(ground_dir)
-        Vseg = png_series_reader(seg_dir)
-        s_score = DICE(Vref, Vseg)
-        s_score_dict["S-SCORE/" + mod[i]] = s_score
-
-        # if dice_:
-        #     print('DICE=%.3f RAVD=%.3f ' %(dice, ravd))
-        # else:
-        #     print('S-score = %.3f' %(dice))
+    fid_stargan, fid_dict, IS_ignite_dict, fid_ignite_dict = calculae_metrics_translation(args, net_G)
+    #dice_dict, s_score_dict, iou_dict, mae_dict = calculate_metrics_segmentation(args, net_G)
 
     return fid_stargan, fid_dict, dice_dict, s_score_dict, iou_dict, IS_ignite_dict, fid_ignite_dict, mae_dict
 

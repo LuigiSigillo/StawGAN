@@ -307,17 +307,17 @@ def train(args):
                 wandb.log(dict(dice_dict), step=ii + 1, commit=False)
                 wandb.log(dict(iou_dict), step=ii + 1, commit=False)
                 wandb.log(dict(mae_dict), step=ii + 1, commit=False)
-                wandb.log(dict(s_score_dict), step=ii + 1, commit=False)
-                formatt = args.experiment_name +"        & {:.6f} & {:.6f} & {:.6f}  & {:.6f}  & {:.6f}     & {:.6f}  & {:.6f}           \\ ".format(
-                    (fid_stargan["FID/mg_mean"]+fid_stargan["FID/gr_mean"])/2,
-                    (fid_ignite_dict["FID-ignite/valimg_mean"]+fid_ignite_dict["FID-ignite/valimgr_mean"])/2,
-                    (IS_ignite_dict["IS/valimg_mean"]+IS_ignite_dict["IS/valimgr_mean"])/2,
-                    (dice_dict["DICE/img"]+dice_dict["DICE/imgr"])/2,
-                    (s_score_dict["S-SCORE/img"]+s_score_dict["S-SCORE/imgr"])/2,
-                    (iou_dict["IoU/img"]+iou_dict["IoU/imgr"])/2,
-                    (mae_dict["mae/img"]+mae_dict["mae/imgr"])/2,
-                )
-                wandb.log({"latex_string":formatt},step=ii + 1, commit=True)
+                wandb.log(dict(s_score_dict), step=ii + 1, commit=True)
+                # formatt = args.experiment_name +"        & {:.6f} & {:.6f} & {:.6f}  & {:.6f}  & {:.6f}     & {:.6f}  & {:.6f}           \\ ".format(
+                #     (fid_stargan["FID/mg_mean"]+fid_stargan["FID/gr_mean"])/2,
+                #     (fid_ignite_dict["FID-ignite/valimg_mean"]+fid_ignite_dict["FID-ignite/valimgr_mean"])/2,
+                #     (IS_ignite_dict["IS/valimg_mean"]+IS_ignite_dict["IS/valimgr_mean"])/2,
+                #     (dice_dict["DICE/img"]+dice_dict["DICE/imgr"])/2,
+                #     (s_score_dict["S-SCORE/img"]+s_score_dict["S-SCORE/imgr"])/2,
+                #     (iou_dict["IoU/img"]+iou_dict["IoU/imgr"])/2,
+                #     (mae_dict["mae/img"]+mae_dict["mae/imgr"])/2,
+                # )
+                # wandb.log({"latex_string":formatt},step=ii + 1, commit=True)
             if (epoch + 1) % 1 == 0:
                 elapsed = time.time() - start_time
                 elapsed = str(datetime.timedelta(seconds=elapsed))[:-7]

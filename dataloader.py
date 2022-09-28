@@ -18,13 +18,60 @@ from scipy.fftpack import hilbert as ht
 import pywt
 
 grayscale = tv.transforms.Grayscale(num_output_channels=1)
+def label_preprocess(data):
+    # # data = data.astype(dtype=int)
+    # # new_seg = np.zeros(data.shape, data.dtype)
+    # # new_seg[(data > 55) & (data <= 70)] = 1
+    # out = data.copy()
+
+    # return out.astype(dtype=int)
+
+    data = data.astype(dtype=int)
+    # print(data.max())
+    new_seg = np.zeros(data.shape, data.dtype)
+    new_seg[data >15] = 1
+    # plt.imshow(new_seg,cmap='gray')
+    # plt.savefig('label_prep')
+    # raise Exception
+    return new_seg
+
+
+# return image and optioanlly the masked image, in this case we want just to remove the white border
+# so the idea is to put in black all the white pixels
+def raw_preprocess(data, get_s=False, path_pair=None, img_size=256):
+    box = (100, 100, 740, 612)
+    if get_s:
+        img_pair = Image.open(path_pair)
+        img_pair = img_pair.crop(box)
+        # convert image to numpy array
+        img_pair = np.asarray(img_pair)
+        #lasciamo qui sotto?????
+        img_pair = cv2.resize(img_pair, (img_size, img_size), interpolation=cv2.INTER_LINEAR)
+        
+        data = data.astype(dtype=float)
+        img_pair = img_pair.astype(dtype=float)
+        out = data.copy()
+        out_pair = img_pair.copy()
+        
+        #normalizzazione
+        out = (out - out.min()) / (out.max() - out.min())
+        out_pair = (out_pair - out_pair.min()) / (out_pair.max() - out_pair.min())
+
+        return out, out_pair
+    data = data.astype(dtype=float)
+    # data[data<50] = 0
+    out = data.copy()
+    #normalizzazione?
+    out = (out - out.min()) / (out.max() - out.min())
+
+    return out
 
 class DroneVeichleDataset(Dataset):
-    def __init__(self,path="dataset", split='train', modals=('img','imgr'),transforms=None, img_size=128, to_be_loaded=False, colored_data=False):
+    def __init__(self, path="dataset", split='train', modals=('img','imgr'),transforms=None, img_size=128, to_be_loaded=False, colored_data=True, paired_image=False):
         super(DroneVeichleDataset, self).__init__()
         
         if not to_be_loaded:
-            
+            self.paired_image = paired_image
             box = (100, 100, 740, 612)
             self.img_size = img_size
             fold = split + "/"
@@ -59,9 +106,9 @@ class DroneVeichleDataset(Dataset):
                     img = np.asarray(img)
                     #lasciamo qui sotto?????
                     img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
-                    img, img_masked = raw_preprocess(img, True)
+                    img, img_pair = raw_preprocess(img, get_s=True, path_pair=i.replace(split+"imgr",split+"img"), img_size = self.img_size)
 
-                    self.raw_dataset.append([(img, img_masked), c])
+                    self.raw_dataset.append([(img, img_pair), c])
                     #?????
                     a =  i.replace(split+"imgr",split+"masksr")
                     img_segm = Image.open(a)
@@ -81,9 +128,9 @@ class DroneVeichleDataset(Dataset):
                         # img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
                         #lasciamo qui sotto?????
                         img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
-                        img, img_masked = raw_preprocess(img, True)
+                        img, img_pair = raw_preprocess(img, get_s=True, path_pair=i.replace(split+"img",split+"imgr"), img_size = self.img_size)
 
-                        self.raw_dataset.append([(img, img_masked), c])
+                        self.raw_dataset.append([(img, img_pair), c])
                         #?????
                         a =  i.replace(split+"img",split+"masks")
                         img_segm = Image.open(a)
@@ -133,92 +180,84 @@ class DroneVeichleDataset(Dataset):
         t_img = (t_img - 0.5) / 0.5
 
         if len(img.shape)>2:
-            if not self.colored_data:
-                img = grayscale(torch.from_numpy(img).type(torch.FloatTensor).permute(2, 0, 1))
-                t_img = grayscale(torch.from_numpy(t_img).type(torch.FloatTensor).permute(2, 0, 1))
-                shape_mask = grayscale(torch.from_numpy(shape_mask).type(torch.FloatTensor).permute(2, 0, 1))
-            else:
-                img, t_img, shape_mask = torch.from_numpy(img).type(torch.FloatTensor).permute(2, 0, 1), \
-                    torch.from_numpy(t_img).type(torch.FloatTensor).permute(2, 0, 1), \
-                    torch.from_numpy(shape_mask).type(torch.FloatTensor).permute(2, 0, 1)
-            return img, \
-                t_img , \
-                shape_mask, \
-                torch.from_numpy(seg_mask).type(torch.LongTensor).unsqueeze(dim=0), \
-                torch.from_numpy(class_label).type(torch.FloatTensor)
+            img, t_img, shape_mask, seg_mask, class_label = self.get_item_rgb(img, t_img, shape_mask, seg_mask, class_label)
+            
         else:
-            if not self.colored_data:
-                img = torch.from_numpy(img).type(torch.FloatTensor).unsqueeze(dim=0)
-                t_img = torch.from_numpy(t_img).type(torch.FloatTensor).unsqueeze(dim=0)
-                shape_mask = torch.from_numpy(shape_mask).type(torch.FloatTensor).unsqueeze(dim=0)
-            else:
-                img =  torch.from_numpy(img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
-                t_img = torch.from_numpy(t_img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
-                shape_mask = torch.from_numpy(shape_mask).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
+            img, t_img, shape_mask, seg_mask, class_label = self.get_item_grey(img, t_img, shape_mask, seg_mask, class_label)
 
-            return img, \
-                t_img, \
-                shape_mask, \
-                torch.from_numpy(seg_mask).type(torch.LongTensor).unsqueeze(dim=0), \
-                torch.from_numpy(class_label).type(torch.FloatTensor)
+        return img, t_img, shape_mask, seg_mask, class_label
+        
     def __len__(self):
         return len(self.raw_dataset)
 
-    def load_dataset(self, path="dataset", split='train', idx = "0", img_size=128, colored_data = False):
+    def load_dataset(self, path="dataset", split='train', idx = "0", img_size=128, colored_data = True, paired_image=False):
         self.label_dataset = torch.load(f"{path}/{idx}_{split}_label_dataset.pt")
         self.raw_dataset = torch.load(f"{path}/{idx}_{split}_raw_dataset.pt")
         self.img_size = img_size
         self.split=split
         self.colored_data = colored_data
+        self.paired_image = paired_image
 
+    def get_item_rgb(self, img, t_img, shape_mask, seg_mask, class_label):
+        if not self.colored_data:
+            img = grayscale(torch.from_numpy(img).type(torch.FloatTensor).permute(2, 0, 1))
+            t_img = grayscale(torch.from_numpy(t_img).type(torch.FloatTensor).permute(2, 0, 1))
+            shape_mask = grayscale(torch.from_numpy(shape_mask).type(torch.FloatTensor).permute(2, 0, 1))
+        else:
+            img, t_img, shape_mask = torch.from_numpy(img).type(torch.FloatTensor).permute(2, 0, 1), \
+                torch.from_numpy(t_img).type(torch.FloatTensor).permute(2, 0, 1), \
+                torch.from_numpy(shape_mask).type(torch.FloatTensor).permute(2, 0, 1)
+        return img, \
+            t_img , \
+            shape_mask, \
+            torch.from_numpy(seg_mask).type(torch.LongTensor).unsqueeze(dim=0), \
+            torch.from_numpy(class_label).type(torch.FloatTensor)
 
+    def get_item_grey(self, img, t_img, shape_mask, seg_mask, class_label):
+        if not self.colored_data:
+            img = torch.from_numpy(img).type(torch.FloatTensor).unsqueeze(dim=0)
+            t_img = torch.from_numpy(t_img).type(torch.FloatTensor).unsqueeze(dim=0)
+            shape_mask = torch.from_numpy(shape_mask).type(torch.FloatTensor).unsqueeze(dim=0)
+        else:
+            img =  torch.from_numpy(img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
+            t_img = torch.from_numpy(t_img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
+            if self.paired_image:
+                shape_mask = torch.from_numpy(shape_mask).type(torch.FloatTensor).unsqueeze(dim=0)
+            else:
+                shape_mask = torch.from_numpy(shape_mask).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
 
+        return img, \
+            t_img, \
+            shape_mask, \
+            torch.from_numpy(seg_mask).type(torch.LongTensor).unsqueeze(dim=0), \
+            torch.from_numpy(class_label).type(torch.FloatTensor)
 
+from utils import denorm
+def testing_dataset():
+    dt = DroneVeichleDataset(split="val", img_size=256)
+    # dt = ChaosDataset_Syn_new(path="../QWT/TarGAN/datasets/chaos2019")
+    syn_loader = DataLoader(dt, shuffle=True)
+    for epoch, (x_real, t_img, shape_mask, mask, label_org) in enumerate(syn_loader):
+        plt.axis('off')
+        plt.subplot(241)
+        plt.imshow(denorm(x_real).squeeze().cpu().numpy().transpose(1,2,0))
+        plt.title('real image')
+        plt.subplot(242)
+        plt.imshow(denorm(t_img).squeeze().cpu().numpy().transpose(1,2,0))
+        plt.title('target image')
+        plt.subplot(243)
+        plt.imshow(shape_mask.squeeze().cpu().numpy().transpose(1,2,0),)
+        plt.title('paired image')
+        plt.subplot(244)
+        plt.imshow(denorm(mask).squeeze().cpu().numpy(),cmap=plt.get_cmap('gray'))
+        plt.title('target mask')
+        plt.savefig('test'+str(epoch))
+        # plt.show()
+        if epoch >0:
+            break
 
-def label_preprocess(data):
-    # # data = data.astype(dtype=int)
-    # # new_seg = np.zeros(data.shape, data.dtype)
-    # # new_seg[(data > 55) & (data <= 70)] = 1
-    # out = data.copy()
+# testing_dataset()
 
-    # return out.astype(dtype=int)
-
-    data = data.astype(dtype=int)
-    # print(data.max())
-    new_seg = np.zeros(data.shape, data.dtype)
-    new_seg[data >15] = 1
-    # plt.imshow(new_seg,cmap='gray')
-    # plt.savefig('label_prep')
-    # raise Exception
-    return new_seg
-
-
-# return image and optioanlly the masked image, in this case we want just to remove the white border
-# so the idea is to put in black all the white pixels
-def raw_preprocess(data, get_s=False):
-
-    data = data.astype(dtype=float)
-    # data[data<50] = 0
-    out = data.copy()
-    #normalizzazione?
-    out = (out - out.min()) / (out.max() - out.min())
-
-    if get_s:
-        shape_mask = out.copy()
-        # plt.axis('off')
-        # plt.imshow(shape_mask)
-        # plt.savefig('rawp')
-        # print(shape_mask[shape_mask ==1])
-        # print(shape_mask.shape)
-        shape_mask[shape_mask ==1] = 0 #here
-        # print(shape_mask.shape)
-
-        #640x512
-        # plt.imshow(shape_mask)
-        # plt.savefig('rawp_aftermask')
-        # raise Exception
-        return out, shape_mask
-    return out
 
 class DroneVeichleDatasetPreTraining(Dataset):
     def __init__(self,path="dataset", split='train', modals=('img','imgr'),transforms=None, img_size=128, to_be_loaded=False, colored_data=False):
@@ -322,32 +361,7 @@ class DroneVeichleDatasetPreTraining(Dataset):
         return len(self.dataset)
 
 
-# dt = DroneVeichleDataset(split="val")
-# # dt = ChaosDataset_Syn_new(path="../QWT/TarGAN/datasets/chaos2019")
-# syn_loader = DataLoader(dt, shuffle=True)
-# for epoch, (x_real, t_img, shape_mask, mask, label_org) in enumerate(syn_loader):
-#     # print((x_real.shape, t_img.shape, shape_mask.shape, mask.shape, label_org.shape))
-#     img = x_real.unsqueeze(dim=0)
-#     pred_t1_img = t_img.unsqueeze(dim=0)
-#     pred_t2_img = shape_mask.unsqueeze(dim=0)
-#     pred_t3_img = mask.unsqueeze(dim=0)
-#     # plt.axis('off')
-#     # plt.subplot(241)
-#     # plt.imshow(denorm(img).squeeze().cpu().numpy(), )
-#     # plt.title('real image')
-#     # plt.subplot(242)
-#     # plt.imshow(denorm(pred_t1_img).squeeze().cpu().numpy())
-#     # plt.title('target image')
-#     # plt.subplot(243)
-#     # plt.imshow(pred_t2_img.squeeze().cpu().numpy())
-#     # plt.title('real image mask')
-#     # plt.subplot(244)
-#     # plt.imshow(denorm(pred_t3_img).squeeze().cpu().numpy(),cmap=plt.get_cmap('gray'))
-#     # plt.title('target mask')
-#     # plt.savefig('test'+str(epoch))
-#     # # plt.show()
-#     # if epoch >1:
-#     #     break
+
 
 
 def save_tensors_dataset(path="dataset", split="train", slices=19, max_length_slices=2000, img_size=256):
@@ -361,7 +375,7 @@ def save_tensors_dataset(path="dataset", split="train", slices=19, max_length_sl
         random.shuffle(list_path)
         l_o = list_path[:max_length_slices]
         dt = DroneVeichleDataset(l_o,split=split, img_size=img_size)
-        my_folder = "dataset/tensors"
+        my_folder = "dataset/tensors/tensors_paired"
         idx = str(idx)
 
         torch.save(dt.raw_dataset, f"{my_folder}/{idx}_{split}_raw_dataset.pt")
@@ -369,6 +383,9 @@ def save_tensors_dataset(path="dataset", split="train", slices=19, max_length_sl
         list_path = list(set(list_path)-set(l_o))
         print(len(list_path), " remaining samples")
 
+
+# save_tensors_dataset(path="dataset", split="train", slices=19, max_length_slices=2000, img_size=256)
+# save_tensors_dataset(path="dataset", split="val", slices=2, max_length_slices=2000, img_size=256)
 
 class DefaultDataset(Dataset):
     def __init__(self, root, img_size=256, transform=None):
