@@ -553,10 +553,11 @@ def calculate_metrics_segmentation(args, net_G):
             s_score = DICE(Vref, Vseg)
             s_score_dict["S-SCORE/" + mod[i]+str(idx)] = s_score
     dice_d, s_score_d, iou_d, mae_d =  {}, {}, {}, {}
-    dice_d["DICE/" + mod[i]] = mean([dice_dict["DICE/" + mod[i]+str(idx)] for idx in range(tot_rep)])
-    s_score_d["S-SCORE/" + mod[i]] = mean([s_score_dict["S-SCORE/"+ mod[i]+str(idx)] for idx in range(tot_rep)])
-    iou_d["IoU/" + mod[i]] = mean([iou_dict["IoU/" + mod[i]+str(idx)] for idx in range(tot_rep)])
-    mae_d["mae/" + mod[i]] = mean([mae_dict["mae/" + mod[i]+str(idx)] for idx in range(tot_rep)])
+    for i in range(len(mod)):
+        dice_d["DICE/" + mod[i]] = mean([dice_dict["DICE/" + mod[i]+str(idx)] for idx in range(tot_rep)])
+        s_score_d["S-SCORE/" + mod[i]] = mean([s_score_dict["S-SCORE/"+ mod[i]+str(idx)] for idx in range(tot_rep)])
+        iou_d["IoU/" + mod[i]] = mean([iou_dict["IoU/" + mod[i]+str(idx)] for idx in range(tot_rep)])
+        mae_d["mae/" + mod[i]] = mean([mae_dict["mae/" + mod[i]+str(idx)] for idx in range(tot_rep)])
 
     return dice_d, s_score_d, iou_d, mae_d 
 
