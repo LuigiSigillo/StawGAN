@@ -509,6 +509,7 @@ def compute_miou(validation_pred, validation_true):
 
     return iou
 
+from statistics import mean
 
 def calculate_metrics_segmentation(args, net_G):
     mod = ['imgr', 'img']
@@ -523,7 +524,7 @@ def calculate_metrics_segmentation(args, net_G):
             syneval_dataset_tot = DroneVeichleDataset(path=args.dataset_path, split='val', colored_data=args.color_images)
         syneval_loader = DataLoader(syneval_dataset_tot, shuffle=True, batch_size=args.eval_batch_size)    
 
-        for i in tqdm(range(2)):  # 2 domains
+        for i in tqdm(range(len(mod))):  # 2 domains
             # ======= Directories =======
             ground_dir = os.path.normpath(args.eval_dir+'/Ground')
             seg_dir = os.path.normpath(args.eval_dir+'/Segmentation')
@@ -531,18 +532,18 @@ def calculate_metrics_segmentation(args, net_G):
             # Vref = jpg_series_reader(ground_dir)
             # Vseg = jpg_series_reader(seg_dir)
             # print(Dice(torch.from_numpy(Vseg), torch.from_numpy(Vref)))
-            mae_dict["mae/" + mod[i]] = create_images_for_dice_or_s_score(args, net_G, i, syneval_loader, dice_=True, calculate_mae=True)
+            mae_dict["mae/" + mod[i]+str(idx)] = create_images_for_dice_or_s_score(args, net_G, i, syneval_loader, dice_=True, calculate_mae=True)
             # ======= Volume Reading =======
             Vref = png_series_reader(ground_dir)
             Vseg = png_series_reader(seg_dir)
             print('Volumes imported.')
             # ======= Evaluation =======
-            print('Calculating for  modality ...', mod[i])
+            print('Calculating for  modality ...', mod[i]+str(idx))
             dice = DICE(Vref, Vseg)
-            dice_dict["DICE/" + mod[i]] = dice
+            dice_dict["DICE/" + mod[i]+str(idx)] = dice
 
             iou = compute_miou(Vref, Vseg)
-            iou_dict["IoU/" + mod[i]] = iou
+            iou_dict["IoU/" + mod[i]+str(idx)] = iou
 
             # calculate s score
             create_images_for_dice_or_s_score(args, net_G, i, syneval_loader, dice_=False)
@@ -550,15 +551,14 @@ def calculate_metrics_segmentation(args, net_G):
             Vref = png_series_reader(ground_dir)
             Vseg = png_series_reader(seg_dir)
             s_score = DICE(Vref, Vseg)
-            s_score_dict["S-SCORE/" + mod[i]] = s_score
+            s_score_dict["S-SCORE/" + mod[i]+str(idx)] = s_score
+    dice_d, s_score_d, iou_d, mae_d =  {}, {}, {}, {}
+    dice_d["DICE/" + mod[i]] = mean([dice_dict["DICE/" + mod[i]+str(idx)] for idx in range(tot_rep)])
+    s_score_d["S-SCORE/" + mod[i]] = mean([s_score_dict["S-SCORE/"+ mod[i]+str(idx)] for idx in range(tot_rep)])
+    iou_d["IoU/" + mod[i]] = mean([iou_dict["IoU/" + mod[i]+str(idx)] for idx in range(tot_rep)])
+    mae_d["mae/" + mod[i]] = mean([mae_dict["mae/" + mod[i]+str(idx)] for idx in range(tot_rep)])
 
-            # if dice_:
-            #     print('DICE=%.3f RAVD=%.3f ' %(dice, ravd))
-            # else:
-            #     print('S-score = %.3f' %(dice))
-
-
-    return dice_dict, s_score_dict, iou_dict, mae_dict
+    return dice_d, s_score_d, iou_d, mae_d 
 
 
 def calculae_metrics_translation(args, net_G):
