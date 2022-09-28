@@ -3,7 +3,6 @@ from models import Generator, Discriminator, ShapeUNet
 from dataloader import *
 from torch.utils.data import DataLoader
 from utils import *
-import argparse
 import time
 import matplotlib.pyplot as plt
 import datetime
@@ -12,6 +11,7 @@ import copy
 import torch.nn.functional as F
 from tqdm import tqdm
 import munch
+import torchgeometry as tgm
 
 
 def train(args):
@@ -25,23 +25,23 @@ def train(args):
     # set_seed(args.random_seed)
     if not args.preloaded_data:
         syn_dataset = DroneVeichleDataset(
-            path=args.dataset_path, split='train', colored_data=args.color_images)
+            path=args.dataset_path, split='train', colored_data=args.color_images, paired_image=args.loss_ssim)
         syn_loader = DataLoader(
             syn_dataset, batch_size=args.batch_size, shuffle=True)
         syneval_dataset = DroneVeichleDataset(
-            path=args.dataset_path, split='val', colored_data=args.color_images)
+            path=args.dataset_path, split='val', colored_data=args.color_images, paired_image=args.loss_ssim)
     else:
         idx = 0
         args.epoch = 10*args.epoch
         syn_dataset = DroneVeichleDataset(to_be_loaded=True)
-        syn_dataset.load_dataset(path=args.dataset_path+"/tensors", split="train",
-                                 idx=str(idx), img_size=args.img_size, colored_data=args.color_images)
+        syn_dataset.load_dataset(path=args.dataset_path+"/tensors/tensors_paired", split="train",
+                                 idx=str(idx), img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim)
         syn_loader = DataLoader(
             syn_dataset, batch_size=args.batch_size, shuffle=True)
 
         syneval_dataset = DroneVeichleDataset(to_be_loaded=True)
-        syneval_dataset.load_dataset(path=args.dataset_path+"/tensors", split="val", idx=str(
-            idx), img_size=args.img_size, colored_data=args.color_images)
+        syneval_dataset.load_dataset(path=args.dataset_path+"/tensors/tensors_paired", split="val", idx=str(
+            idx), img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim)
 
     in_c = 1 if not args.color_images else 3
     in_c_gen = in_c+4 if args.wavelet_type != None else in_c
@@ -75,6 +75,8 @@ def train(args):
     print('start training...')
 
     ii = args.sepoch * len(syn_loader)
+    ssim = tgm.losses.SSIM(3, reduction='mean')
+
     # logdir = "log/" + args.save_path
     # log_writer = LogWriter(logdir)
     with wandb.init(config=args, project="targan_drone") as run:
@@ -200,7 +202,10 @@ def train(args):
                 x_reconst, t_reconst = nets.netG(
                     x_fake, t_fake, c_org, wav_type=args.wavelet_type)
                 g_loss_rec = torch.mean(torch.abs(x_real - x_reconst))
-
+                if args.loss_ssim:
+                    ssim_loss = ssim(x_fake, shape_mask.to(device))
+                else:
+                    ssim_loss =0
                 if index.shape[0] != 0:
                     out_src, out_cls = nets.netD_t(
                         torch.index_select(t_fake, dim=0, index=index))
@@ -222,7 +227,7 @@ def train(args):
                     torch.abs(denorm(x_fake) * mask - denorm(t_fake)))
                 # Backward and optimize.
                 gi_loss = g_loss_fake + args.w_cycle * g_loss_rec + \
-                    g_loss_cls * args.w_g_c  # + shape_loss* args.w_shape
+                    g_loss_cls * args.w_g_c  +ssim_loss*args.w_ssim # + shape_loss* args.w_shape
                 gt_loss = gt_loss + args.w_cycle * g_loss_rec_t + \
                     shape_loss_t * args.w_shape + cross_loss * args.w_g_cross
                 g_loss = gi_loss + gt_loss
@@ -247,6 +252,7 @@ def train(args):
                     all_losses["train/G/loss_cls"] = g_loss_cls.item()
                     all_losses["train/G/loss_cls_t"] = g_loss_cls_t.item()
                     # all_losses["train/G/loss_shape"] = shape_loss.item()
+                    all_losses["train/G/loss_ssim"] = ssim_loss.item()
                     all_losses["train/G/loss_shape_t"] = shape_loss_t.item()
                     all_losses["train/G/loss_cross"] = cross_loss.item()
                     wandb.log(all_losses, step=ii, commit=True)

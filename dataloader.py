@@ -204,9 +204,10 @@ class DroneVeichleDataset(Dataset):
             t_img = grayscale(torch.from_numpy(t_img).type(torch.FloatTensor).permute(2, 0, 1))
             shape_mask = grayscale(torch.from_numpy(shape_mask).type(torch.FloatTensor).permute(2, 0, 1))
         else:
-            img, t_img, shape_mask = torch.from_numpy(img).type(torch.FloatTensor).permute(2, 0, 1), \
-                torch.from_numpy(t_img).type(torch.FloatTensor).permute(2, 0, 1), \
-                torch.from_numpy(shape_mask).type(torch.FloatTensor).permute(2, 0, 1)
+            img, t_img = torch.from_numpy(img).type(torch.FloatTensor).permute(2, 0, 1), \
+                torch.from_numpy(t_img).type(torch.FloatTensor).permute(2, 0, 1)
+            shape_mask = torch.from_numpy(shape_mask).type(torch.FloatTensor).permute(2, 0, 1) if len(shape_mask.shape) ==3 else \
+                            torch.from_numpy(shape_mask).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
         return img, \
             t_img , \
             shape_mask, \
@@ -222,7 +223,9 @@ class DroneVeichleDataset(Dataset):
             img =  torch.from_numpy(img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
             t_img = torch.from_numpy(t_img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
             if self.paired_image:
-                shape_mask = torch.from_numpy(shape_mask).type(torch.FloatTensor).unsqueeze(dim=0)
+                shape_mask = torch.from_numpy(shape_mask).type(torch.FloatTensor).permute(2, 0, 1) if len(shape_mask.shape) ==3 else \
+                            torch.from_numpy(shape_mask).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
+                # shape_mask = torch.from_numpy(shape_mask).type(torch.FloatTensor).permute(2, 0, 1)
             else:
                 shape_mask = torch.from_numpy(shape_mask).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
 

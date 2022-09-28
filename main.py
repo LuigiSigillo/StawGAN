@@ -34,7 +34,7 @@ if __name__ == '__main__':
     parser.add_argument('-gan_version', type=str, default='Generator[2/3]+shapeunet+D')
     parser.add_argument('-epoch', type=int, default=50)
     parser.add_argument('-sepoch', type=int, default=0)
-    parser.add_argument('-preloaded_data', type=bool, default=False)
+    parser.add_argument('-preloaded_data', type=bool, default=True)
     parser.add_argument('-pretrained_generator', type=bool, default=False)
     parser.add_argument('-color_images', type=bool, default=True)
     parser.add_argument('-modals', type=tuple, default=("img_ir", "img"))
@@ -42,7 +42,7 @@ if __name__ == '__main__':
     parser.add_argument('-loss_function', type=str, default='wgan-gp+move+cycle+ugan+d+l2')
     parser.add_argument('-optimizer', type=str, default='adam')
     parser.add_argument('-note', type=str,default='affine:True;')
-    parser.add_argument('-wavelet_type', type=str,default=None) #quat
+    parser.add_argument('-wavelet_type', type=str,default=None) #real or quat
     parser.add_argument('-random_seed', type=int, default='888')
     parser.add_argument('-c_dim', type=int, default='2')
     parser.add_argument('-h_conv', type=int, default='16')
@@ -56,7 +56,7 @@ if __name__ == '__main__':
     parser.add_argument('-w_g_cross', type=float, default=50.0)
     parser.add_argument('-w_shape', type=float, default=1)
     parser.add_argument('-w_cycle', type=float, default=1)
-    parser.add_argument('-loss_ssim', type=float, default=1)
+    parser.add_argument('-loss_ssim', type=bool, default=False)
     parser.add_argument('-w_ssim', type=float, default=1)
 
     args = parser.parse_args()
