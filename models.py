@@ -175,7 +175,7 @@ class Generator(nn.Module):
 class Discriminator(nn.Module):
     # the D_x or D_r of TarGAN ( backbone of PatchGAN )
 
-    def __init__(self, image_size=265, conv_dim=64, c_dim=5, repeat_num=6, colored_input=False):
+    def __init__(self, image_size=256, conv_dim=64, c_dim=5, repeat_num=6, colored_input=False):
         super(Discriminator, self).__init__()
         layers = []
         layers.append(nn.Conv2d(1 if not colored_input else 3, conv_dim, kernel_size=4, stride=2, padding=1))

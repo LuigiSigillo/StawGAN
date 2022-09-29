@@ -1,5 +1,5 @@
 from metrics import calculate_all_metrics
-from models import Generator, Discriminator, ShapeUNet
+from models_quat import Generator, Discriminator, ShapeUNet
 from dataloader import *
 from torch.utils.data import DataLoader
 from utils import *
@@ -46,15 +46,15 @@ def train(args):
     in_c = 1 if not args.color_images else 3
     in_c_gen = in_c+4 if args.wavelet_type != None else in_c
     netG = Generator(in_c=in_c_gen + args.c_dim, mid_c=args.G_conv, layers=2, s_layers=3, affine=True, last_ac=True,
-                     colored_input=args.color_images, wav=args.wavelet_type)
+                     colored_input=args.color_images, wav=args.wavelet_type,real=args.real, qsn=args.qsn, phm=args.phm)
     if args.pretrained_generator:
         netG.load_state_dict(torch.load(
             args.save_path+"/pretrained_gen_"+str(args.img_size)+".pt"))
 
     nets = munch.Munch({"netG": netG,
-                        "netD_i": Discriminator(c_dim=args.c_dim * 2, image_size=args.img_size, colored_input=args.color_images),
-                        "netD_t": Discriminator(c_dim=args.c_dim * 2, image_size=args.img_size, colored_input=args.color_images),
-                        "netH":  ShapeUNet(img_ch=in_c, output_ch=1, mid=args.h_conv),
+                        "netD_i": Discriminator(c_dim=args.c_dim * 2, image_size=args.img_size, colored_input=args.color_images,real=args.real, qsn=args.qsn, phm=args.phm),
+                        "netD_t": Discriminator(c_dim=args.c_dim * 2, image_size=args.img_size, colored_input=args.color_images,real=args.real, qsn=args.qsn, phm=args.phm),
+                        "netH":  ShapeUNet(img_ch=in_c, output_ch=1, mid=args.h_conv,real=args.real, qsn=args.qsn, phm=args.phm),
                         })
     nets.netG.to(device)
     nets.netD_i.to(device)
@@ -244,14 +244,14 @@ def train(args):
 
                 if (i + 0) % args.logs_every == 0:
                     all_losses = dict()
-
+                    all_losses["train/D/loss_total"] = d_loss.item()
+                    all_losses["train/G/loss_total"] = g_loss.item()
                     all_losses["train/D/w_di"] = w_di
                     all_losses["train/D/w_dt"] = w_dt
                     all_losses["train/D/loss_f_cls"] = d_loss_f_cls.item()
                     all_losses["train/D/loss_f_cls_t"] = d_loss_f_cls_t.item()
                     all_losses["train/G/loss_cls"] = g_loss_cls.item()
                     all_losses["train/G/loss_cls_t"] = g_loss_cls_t.item()
-                    # all_losses["train/G/loss_shape"] = shape_loss.item()
                     all_losses["train/G/loss_ssim"] = ssim_loss.item()
                     all_losses["train/G/loss_shape_t"] = shape_loss_t.item()
                     all_losses["train/G/loss_cross"] = cross_loss.item()
