@@ -184,8 +184,10 @@ def generate_images_fid(netG, args, mode, eval_dataset_imgr, eval_dataset_img, d
             #                              imagenet_normalize=False)
             task = '%s_to_%s' % (src_domain, trg_domain)
             path_fake = os.path.join(args.eval_dir, task)
+            path_fake_gt = os.path.join(path_fake,"ground_truth")
             shutil.rmtree(path_fake, ignore_errors=True)
             os.makedirs(path_fake)
+            os.makedirs(path_fake_gt)
             print('Generating images for %s...' % task)
             for i, (x_src) in enumerate(tqdm(loader_src, total=len(loader_src))):
                 N = x_src.size(0)
@@ -213,7 +215,9 @@ def generate_images_fid(netG, args, mode, eval_dataset_imgr, eval_dataset_img, d
                 # save generated images to calculate FID later
                 for k in range(N):
                     filename = os.path.join(path_fake,'%.4i.png' % (i * args.eval_batch_size + (k + 1)))
+                    filename_src = os.path.join(path_fake_gt,'%.4i.png' % (i * args.eval_batch_size + (k + 1)))
                     save_image(x_fake[k], ncol=1, filename=filename, args=args)
+                    save_image(x_src[k], ncol=1, filename=filename_src, args=args)
 
                 # lpips_value = calculate_lpips_given_images(group_of_images)
                 # lpips_values.append(lpips_value)
