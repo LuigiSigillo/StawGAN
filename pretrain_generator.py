@@ -24,7 +24,7 @@ def pretrain_generator(net_G, train_dl, opt, criterion, epochs):
         print(f"Epoch {e + 1}/{epochs}")
         print(f"L1 Loss: {loss_meter/len(train_dl):.5f}")
 
-device = "cuda"
+device = "cuda" if torch.cuda.is_available() else "cpu"
 in_c = 3
 net_G = Generator(in_c = in_c + 2,
                   mid_c = 64,

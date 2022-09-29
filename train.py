@@ -20,7 +20,7 @@ def train(args):
     print(glr, dlr)
     device = torch.device("cpu")
     if torch.cuda.is_available():
-        device = torch.device("cuda")
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # set_seed(args.random_seed)
     if not args.preloaded_data:
@@ -45,6 +45,12 @@ def train(args):
 
     in_c = 1 if not args.color_images else 3
     in_c_gen = in_c+4 if args.wavelet_type != None else in_c
+
+    if args.qsn or args.phm:
+        while (in_c_gen + args.c_dim) % 4 != 0: #3+2
+            in_c_gen+=1
+        while in_c % 4 !=0:
+            in_c+=1
     netG = Generator(in_c=in_c_gen + args.c_dim, mid_c=args.G_conv, layers=2, s_layers=3, affine=True, last_ac=True,
                      colored_input=args.color_images, wav=args.wavelet_type,real=args.real, qsn=args.qsn, phm=args.phm)
     if args.pretrained_generator:

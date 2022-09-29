@@ -1,6 +1,5 @@
 dataset/*
-log/*
-__pycache__/*
+*.pyc
 wandb/*
 test_img/*
 checkpoints/*

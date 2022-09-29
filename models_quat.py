@@ -9,7 +9,7 @@ from HLayers.PHC import PHMConv, PHMTransposeConv
 import torch.nn.functional as F
 from dataloader import wavelet_wrapper
 from torch.nn.utils.parametrizations import spectral_norm
-device = "cuda"
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
 class QuaternionInstanceNorm2d(nn.Module):
     r"""Applies a 2D Quaternion Instance Normalization to the incoming data.
@@ -100,14 +100,14 @@ bias = False
 class conv_block(nn.Module):
     # base block
     def __init__(self, ch_in, ch_out, affine=True, actv=nn.LeakyReLU(inplace=True), downsample=False, upsample=False,
-                 share_net_real=False, phm=False, qsn=False, real=True):
+                 share_net_real=False, phm=False, phm_n=4, qsn=False, real=True):
         super(conv_block, self).__init__()
         if phm and not share_net_real:
             self.conv = nn.Sequential(
-                PHMConv(4, ch_in, ch_out, kernel_size=3, stride=1, padding=1, bias=bias),
+                PHMConv(phm_n, ch_in, ch_out, kernel_size=3, stride=1, padding=1, bias=bias),
                 QuaternionInstanceNorm2d(ch_out, affine=affine),
                 actv,
-                PHMConv(4, ch_out, ch_out, kernel_size=3, stride=1, padding=1, bias=bias),
+                PHMConv(phm_n, ch_out, ch_out, kernel_size=3, stride=1, padding=1, bias=bias),
                 QuaternionInstanceNorm2d(ch_out, affine=affine),
                 actv,
             )
@@ -150,13 +150,13 @@ class conv_block(nn.Module):
 
 class up_conv(nn.Module):
     # base block
-    def __init__(self, ch_in, ch_out, affine=True, actv=nn.LeakyReLU(inplace=True), phm=False, qsn=False, real=True):
+    def __init__(self, ch_in, ch_out, affine=True, actv=nn.LeakyReLU(inplace=True), phm=False, phm_n=4, qsn=False, real=True):
         super(up_conv, self).__init__()
 
         if phm:
             self.up = nn.Sequential(
                 nn.Upsample(scale_factor=2),
-                PHMConv(4, ch_in, ch_out, kernel_size=3, stride=1, padding=1, bias=bias),
+                PHMConv(phm_n, ch_in, ch_out, kernel_size=3, stride=1, padding=1, bias=bias),
                 QuaternionInstanceNorm2d(ch_out, affine=affine),
                 actv,
             )
@@ -279,11 +279,11 @@ DISCRIMINATOR
 class Discriminator(nn.Module):
     # the D_x or D_r of TarGAN ( backbone of PatchGAN )
 
-    def __init__(self, image_size=256, conv_dim=64, c_dim=5, repeat_num=6, real=True, qsn=False, phm=False, spectral=False, last_layer_gen_real=True):
+    def __init__(self, image_size=256, conv_dim=64, c_dim=5, repeat_num=6, colored_input=True, real=True, qsn=False, phm=False, phm_n=4, spectral=False, last_layer_gen_real=True):
         super(Discriminator, self).__init__()
         layers = []
         if phm:
-            layers.append(PHMConv(4, 4, conv_dim, kernel_size=4, stride=2, padding=1))
+            layers.append(PHMConv(phm_n, phm_n, conv_dim, kernel_size=4, stride=2, padding=1))
         elif qsn:
             if spectral:
                 layers.append(Qspectral_norm(QuaternionConv(4, conv_dim, kernel_size=4, stride=2, padding=1)))
@@ -294,14 +294,14 @@ class Discriminator(nn.Module):
             if spectral:
                 layers.append(spectral_norm(nn.Conv2d(1, conv_dim, kernel_size=4, stride=2, padding=1)))
             else:
-                layers.append(nn.Conv2d(1, conv_dim, kernel_size=4, stride=2, padding=1))
+                layers.append(nn.Conv2d(1 if not colored_input else 3, conv_dim, kernel_size=4, stride=2, padding=1))
 
         layers.append(nn.LeakyReLU(0.01))
 
         curr_dim = conv_dim
         for i in range(1, repeat_num):
             if phm:
-                layers.append(PHMConv(4, curr_dim, curr_dim * 2, kernel_size=4, stride=2, padding=1))
+                layers.append(PHMConv(phm_n, curr_dim, curr_dim * 2, kernel_size=4, stride=2, padding=1))
             elif qsn:
                 if spectral:
                     layers.append(
@@ -321,8 +321,8 @@ class Discriminator(nn.Module):
         self.main = nn.Sequential(*layers)
 
         if phm:
-            self.conv1 = PHMConv(4, curr_dim, 4, kernel_size=3, stride=1, padding=1, bias=False)
-            self.conv2 = PHMConv(4, curr_dim, c_dim, kernel_size=kernel_size, bias=False)
+            self.conv1 = PHMConv(phm_n, curr_dim, 4, kernel_size=3, stride=1, padding=1, bias=False)
+            self.conv2 = PHMConv(phm_n, curr_dim, c_dim, kernel_size=kernel_size, bias=False)
             # self.conv2 = nn.Conv2d(curr_dim, c_dim, kernel_size=kernel_size, bias=False)
             # print(curr_dim,c_dim,kernel_size)
 
@@ -358,7 +358,9 @@ class Discriminator(nn.Module):
                 self.conv2 = nn.Conv2d(curr_dim, c_dim, kernel_size=kernel_size, bias=False)
         self.real = real
         self.last_layer_gen_real = last_layer_gen_real
-
+        self.qsn = qsn
+        self.phm = phm
+        self.in_c = 1 if not colored_input else 3 if real else 4
     def forward(self, x_real):
         # print("discriminatore in entrata", x.shape) #torch.Size([4, 1, 128, 128])
         # rgb + aalpha
@@ -367,11 +369,12 @@ class Discriminator(nn.Module):
         #     x = x.repeat(1, 3, 1, 1)
         #     x = torch.cat([x, grayscale(x)], 1)
         # print("discriminatore dopo main",h.shape) #torch.Size([4, 2048, 2, 2])
+        if self.qsn or self.phm:
+            x_real = torch.cat((x_real, torch.zeros(x_real.shape[0], self.in_c-x_real.shape[1] ,x_real.shape[2],x_real.shape[3]).to(device)), dim=1).to(device)
         h = self.main(x_real)
         out_src = self.conv1(h)
         out_cls = self.conv2(h)
-        if not self.real and not self.last_layer_gen_real:
-            out_src = out_src[:, :1, :, ]
+
         # print("discriminatore out src",out_src.shape) #torch.Size([4, 1, 2, 2])
         # print("discriminatore out cls",out_cls.shape, "view",out_cls.view(out_cls.size(0), out_cls.size(1)).shape) #torch.Size([4, 6, 1, 1]) view torch.Size([4, 6])
         return out_src, out_cls.view(out_cls.size(0), out_cls.size(1))
@@ -396,29 +399,30 @@ def create_wavelet_from_input_tensor(inputs, mods, wav_type ):
 class Generator(nn.Module):
     # the G of TarGAN
 
-    def __init__(self, in_c, mid_c, layers, s_layers, affine, last_ac=True, wav=False, real=True, qsn=False, phm=False, spectral=False, last_layer_gen_real=True):
+    def __init__(self, in_c, mid_c, layers, s_layers, affine, last_ac=True, colored_input=True, wav=False, real=True, qsn=False, phm=False, phm_n=4, spectral=False, last_layer_gen_real=True):
         super(Generator, self).__init__()
         self.img_encoder = Encoder(in_c, mid_c, layers, affine, phm=phm, qsn=qsn, real=real)
         self.img_decoder = Decoder(mid_c * (2 ** layers), mid_c * (2 ** (layers - 1)), layers, affine,64)
-        in_c_targ = in_c-4 if wav is not None else in_c
-        self.target_encoder = Encoder(in_c_targ, mid_c, layers, affine, phm=phm, qsn=qsn, real=real)
+        self.in_c_targ = in_c-4 if wav is not None else in_c
+        self.target_encoder = Encoder(self.in_c_targ, mid_c, layers, affine, phm=phm, qsn=qsn, real=real)
         self.target_decoder = Decoder(mid_c * (2 ** layers), mid_c * (2 ** (layers - 1)), layers, affine,64) 
         self.share_net = ShareNet(mid_c * (2 ** (layers - 1)), mid_c * (2 ** (layers - 1 + s_layers)), s_layers, affine,256)
 
         if phm and not last_layer_gen_real:
-            self.out_img = PHMConv(4, mid_c, 4, 1, bias=bias)
-            self.out_tumor = PHMConv(4, mid_c, 4, 1, bias=bias)
+            self.out_img = PHMConv(phm_n, mid_c, 4, 1, bias=bias)
+            self.out_tumor = PHMConv(phm_n, mid_c, 4, 1, bias=bias)
         elif qsn and not last_layer_gen_real:
             self.out_img = QuaternionConv(mid_c, 4, 1, stride=1, bias=bias)
             self.out_tumor = QuaternionConv(mid_c, 4, 1, stride=1, bias=bias)
         elif real or last_layer_gen_real:
-            self.out_img = nn.Conv2d(mid_c, 1, 1, bias=bias)
-            self.out_tumor = nn.Conv2d(mid_c, 1, 1, bias=bias)
+            self.out_img = nn.Conv2d(mid_c, 1 if not colored_input else 3, 1, bias=bias)
+            self.out_tumor = nn.Conv2d(mid_c, 1 if not colored_input else 3, 1, bias=bias)
 
         self.last_ac = last_ac
         self.real = real
         self.qsn = qsn
-
+        self.in_c = in_c
+        self.phm = phm
     # G(image,target_image,target_modality) --> (out_image,output_target_area_image)
 
     def forward(self, img, tumor=None, c=None, mode="train", wav_type=None):
@@ -429,32 +433,25 @@ class Generator(nn.Module):
             img = torch.cat([img, create_wavelet_from_input_tensor(img, c, wav_type)], dim=1)
         
         img = torch.cat([img, c], dim=1)
-        # if img.size(1) == 5:
-        #    img_target_wavelet = torch.cat([img_target, wavelet_img], dim=1)
-        # print('gen - img5')
-        # add wavelet to img_target so now tensor is (1real+3target,4wavelets) = 8 channels so 2 quaternion
-        
-        if not self.real:
-            res_img = res_img[:, :1, :, :]
-        # wavelet
-        res_img = res_img[:, :1, :, :]
+        if self.qsn or self.phm:
+            img = torch.cat((img, torch.zeros(img.shape[0], self.in_c-img.shape[1] ,img.shape[2],img.shape[3]).to(device)), dim=1).to(device)
+        x_1 = self.img_encoder(img)
+        s_1 = self.share_net(x_1)
+        res_img = self.out_img(self.img_decoder(s_1,x_1))
 
         # print(res_img.shape)#torch.Size([4, 1, 128, 128])
         if self.last_ac:
             res_img = torch.tanh(res_img)
         if mode == "train":
             tumor = torch.cat([tumor, c], dim=1)
-            
+            if self.qsn or self.phm:
+                tumor = torch.cat((tumor, torch.zeros(tumor.shape[0], self.in_c_targ-tumor.shape[1] ,tumor.shape[2],tumor.shape[3]).to(device)), dim=1).to(device)
             x_2 = self.target_encoder(tumor)
             s_2 = self.share_net(x_2)
             res_tumor = self.out_tumor(self.target_decoder(s_2, x_2))
             if self.last_ac:
                 res_tumor = torch.tanh(res_tumor)
-            if not self.real:
-                res_tumor = res_tumor[:, :1, :, :]
 
-            # wavelet
-            res_tumor = res_tumor[:, :1, :, :]
 
             return res_img, res_tumor
         return res_img
@@ -468,9 +465,9 @@ SHAPE U NET
 class ShapeUNet(nn.Module):
     # the S of TarGAN
 
-    def __init__(self, img_ch=1, mid=32, output_ch=1, real=True, qsn=False, phm=False, last_layer_gen_real=True):
+    def __init__(self, img_ch=1, mid=32, output_ch=1, real=True, qsn=False, phm=False, phm_n=4, last_layer_gen_real=True):
         super(ShapeUNet, self).__init__()
-
+        self.img_ch = img_ch
         self.Maxpool1 = nn.MaxPool2d(kernel_size=2, stride=2)
         self.Maxpool2 = nn.MaxPool2d(kernel_size=2, stride=2)
         self.Maxpool3 = nn.MaxPool2d(kernel_size=2, stride=2)
@@ -484,11 +481,11 @@ class ShapeUNet(nn.Module):
         self.Conv5 = conv_block(ch_in=mid * 8, ch_out=mid * 16)
 
         if phm:
-            self.Up5 = PHMTransposeConv(4, mid * 16, mid * 8, kernel_size=2, stride=2)
-            self.Up4 = PHMTransposeConv(4, mid * 8, mid * 4, kernel_size=2, stride=2)
-            self.Up3 = PHMTransposeConv(4, mid * 4, mid * 2, kernel_size=2, stride=2)
-            self.Up2 = PHMTransposeConv(4, mid * 2, mid * 1, kernel_size=2, stride=2)
-            self.Conv_1x1 = PHMConv(4, mid * 1, output_ch, kernel_size=1)
+            self.Up5 = PHMTransposeConv(phm_n, mid * 16, mid * 8, kernel_size=2, stride=2)
+            self.Up4 = PHMTransposeConv(phm_n, mid * 8, mid * 4, kernel_size=2, stride=2)
+            self.Up3 = PHMTransposeConv(phm_n, mid * 4, mid * 2, kernel_size=2, stride=2)
+            self.Up2 = PHMTransposeConv(phm_n, mid * 2, mid * 1, kernel_size=2, stride=2)
+            self.Conv_1x1 = PHMConv(phm_n, mid * 1, output_ch, kernel_size=1)
         elif qsn:
             self.Up5 = QuaternionTransposeConv(mid * 16, mid * 8, kernel_size=2, stride=2)
             self.Up4 = QuaternionTransposeConv(mid * 8, mid * 4, kernel_size=2, stride=2)
@@ -510,15 +507,17 @@ class ShapeUNet(nn.Module):
         self.Up_conv4 = conv_block(ch_in=mid * 8, ch_out=mid * 4)
         self.Up_conv3 = conv_block(ch_in=mid * 4, ch_out=mid * 2)
         self.Up_conv2 = conv_block(ch_in=mid * 2, ch_out=mid * 1)
-
-        self.real = real
-        self.last_layer_gen_real=last_layer_gen_real
+        self.phm = phm
+        self.qsn = qsn
     def forward(self, x):
         # encoding path
         # if (not args.real and args.soup) and not args.last_layer_gen_real:
         #     x = x.repeat(1, 3, 1, 1)
         #     x = torch.cat([x, grayscale(x)], 1)
         # wavelet
+        if self.qsn or self.phm:
+            x = torch.cat((x, torch.zeros(x.shape[0], self.img_ch-x.shape[1] ,x.shape[2],x.shape[3]).to(device)), dim=1).to(device)
+      
         x1 = self.Conv1(x)
 
         x2 = self.Maxpool1(x1)
@@ -552,9 +551,6 @@ class ShapeUNet(nn.Module):
         d2 = self.Up_conv2(d2)
 
         d1 = self.Conv_1x1(d2)
-        if not self.real and not self.last_layer_gen_real:
-            d1 = d1[:, :1, :, :]
-        # wavelet
-        d1 = d1[:, :1, :, :]
+
 
         return torch.sigmoid(d1)

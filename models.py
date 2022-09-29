@@ -6,7 +6,7 @@ bias = False
 from torchvision import models
 from dataloader import wavelet_wrapper
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
+device = "cuda" if torch.cuda.is_available() else "cpu" if torch.cuda.is_available() else "cpu"
 
 class conv_block(nn.Module):
     # base block
@@ -136,7 +136,7 @@ class Decoder(nn.Module):
 class Generator(nn.Module):
     # the G of TarGAN
 
-    def __init__(self, in_c, mid_c, layers, s_layers, affine, last_ac=True, colored_input=False, wav=False):
+    def __init__(self, in_c, mid_c, layers, s_layers, affine, last_ac=True, colored_input=True, wav=False):
         super(Generator, self).__init__()
         self.img_encoder = Encoder(in_c, mid_c, layers, affine)
         self.img_decoder = Decoder(mid_c * (2 ** layers), mid_c * (2 ** (layers - 1)), layers, affine,64)

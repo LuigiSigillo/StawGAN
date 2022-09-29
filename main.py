@@ -16,6 +16,27 @@ def set_deterministic(seed=42):
     # torch.backends.cudnn.enabled = False
 
 
+def check_errors(args):
+    if args.real and args.qsn and args.phm:
+        raise Exception("Check or real or qsn or phm, not all togheter")
+    if args.real and args.qsn:
+        print(args.real, args.qsn)
+        raise Exception("Check or real or qsn, not all togheter")
+    if args.real and args.phm:
+        raise Exception("Check or real or phm, not all togheter")
+    if args.phm and args.qsn:
+        raise Exception("Check or qsn or phm, not all togheter")
+
+
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -33,15 +54,15 @@ if __name__ == '__main__':
     parser.add_argument('-img_size', type=int, default=256)
     parser.add_argument('-epoch', type=int, default=50)
     parser.add_argument('-sepoch', type=int, default=0)
-    parser.add_argument('-preloaded_data', type=bool, default=True)
-    parser.add_argument('-pretrained_generator', type=bool, default=False)
-    parser.add_argument('-color_images', type=bool, default=True)
+    parser.add_argument("-preloaded_data", type=str2bool, nargs='?', const=True, default=True, help="Activate nice mode.")
+    parser.add_argument("-pretrained_generator", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
+    parser.add_argument("-color_images", type=str2bool, nargs='?', const=True, default=True, help="Activate nice mode.")
     parser.add_argument('-wavelet_type', type=str,default=None) #real or quat
-    parser.add_argument('-loss_ssim', type=bool, default=False)
+    parser.add_argument("-loss_ssim", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
     parser.add_argument('-w_ssim', type=float, default=1)
-    parser.add_argument('-real', type=bool, default=True)
-    parser.add_argument('-qsn', type=bool, default=False)
-    parser.add_argument('-phm', type=bool, default=False)
+    parser.add_argument("-real", type=str2bool, nargs='?', const=True, default=True, help="Activate nice mode.")
+    parser.add_argument("-qsn", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
+    parser.add_argument("-phm", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
 
 
     parser.add_argument('-gan_version', type=str, default='Generator[2/3]+shapeunet+D')
@@ -65,6 +86,8 @@ if __name__ == '__main__':
     parser.add_argument('-w_cycle', type=float, default=1)
     
     args = parser.parse_args()
+
+    check_errors(args)
     print(args)
     set_deterministic(args.random_seed)
     

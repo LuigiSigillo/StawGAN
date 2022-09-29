@@ -43,7 +43,7 @@ def save_image(x, ncol, filename,args):
     if len(x.shape) == 4 and args.mode=="train":
         wandb.log({sample_dir: wandb.Image(filename,caption=iters)},commit=False)
 
-def loss_filter(mask,device="cuda"):
+def loss_filter(mask,device="cuda" if torch.cuda.is_available() else "cpu"):
     list = []
     for i, m in enumerate(mask):
         if torch.any(m == 1):
@@ -113,7 +113,7 @@ def save_state_net(net, args, index, optim=None, experiment_name="test"):
             for i in argsDict.keys():
                 f.writelines(str(i) + ' : ' + str(argsDict[i]) + '\n')
 
-def load_state_net(args, net, net_name, index, optim=None, device="cuda"):
+def load_state_net(args, net, net_name, index, optim=None, device="cuda" if torch.cuda.is_available() else "cpu"):
     save_path = os.path.join(args.save_path, args.experiment_name)
     if not os.path.isdir(save_path):
         raise Exception("wrong path")

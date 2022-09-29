@@ -22,7 +22,7 @@ from scipy import linalg
 import subprocess
 from ignite.metrics import FID, InceptionScore
 
-device = "cuda"
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
 def calculate_pytorch_fid(args):
     path_real = [args.dataset_path + "/train/trainimg", args.dataset_path + "/train/trainimgr"]
@@ -42,7 +42,7 @@ def calculate_pytorch_fid(args):
                 to = "valimg" 
             print("evaluating " + src + " to " + to)
             
-            dev = "cuda" if torch.cuda.is_available() else "cpu"
+            dev = "cuda" if torch.cuda.is_available() else "cpu" if torch.cuda.is_available() else "cpu"
             x = str(subprocess.check_output(f'python -m pytorch_fid "{p}" "{eval_path}" --device {dev} --batch-size {args.eval_batch_size}',
                 shell=True))
             x = x.split(' ')[-1][:-3]
@@ -576,7 +576,7 @@ def calculae_metrics_translation(args, net_G):
     return fid_stargan, fid_dict, IS_ignite_dict, fid_ignite_dict 
 
 
-def calculate_all_metrics(args, net_G, device="cuda"):
+def calculate_all_metrics(args, net_G, device="cuda" if torch.cuda.is_available() else "cpu"):
     args.eval_dir=os.path.join(args.eval_dir, args.experiment_name)
     os.makedirs(args.eval_dir, exist_ok=True)
 

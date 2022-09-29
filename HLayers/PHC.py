@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 import math
 seed = 888
-device = "cuda"
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
 def quaternion_init(in_features, out_features, rng, kernel_size=None, criterion='glorot'):
 
