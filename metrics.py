@@ -42,8 +42,7 @@ def calculate_pytorch_fid(args):
                 to = "valimg" 
             print("evaluating " + src + " to " + to)
             
-            dev = "cuda" if torch.cuda.is_available() else "cpu" if torch.cuda.is_available() else "cpu"
-            x = str(subprocess.check_output(f'python -m pytorch_fid "{p}" "{eval_path}" --device {dev} --batch-size {args.eval_batch_size}',
+            x = str(subprocess.check_output(f'python -m pytorch_fid "{p}" "{eval_path}" --device {device} --batch-size {args.eval_batch_size}',
                 shell=True))
             x = x.split(' ')[-1][:-3]
             fid_scores["FID/" + src + " to " + to] = float(x)
@@ -384,10 +383,11 @@ def jpg_series_reader(dir, mlen=None):
 
 
 def create_images_for_dice_or_s_score(args, netG, idx_eval, syneval_loader, dice_=False, calculate_mae=False):
-    shutil.rmtree(args.eval_dir+"/Segmentation", ignore_errors=True)
-    shutil.rmtree(args.eval_dir+"/Ground", ignore_errors=True)
-    os.makedirs(args.eval_dir+"/Segmentation")
-    os.makedirs(args.eval_dir+"/Ground")
+    subp ="dice" if dice_ else "s_score"
+    shutil.rmtree(args.eval_dir+"/Segmentation/"+subp, ignore_errors=True)
+    shutil.rmtree(args.eval_dir+"/Ground/"+subp, ignore_errors=True)
+    os.makedirs(args.eval_dir+"/Segmentation/"+subp)
+    os.makedirs(args.eval_dir+"/Ground/"+subp)
     output_mae, plotted = 0, 0 
     mae = nn.L1Loss()
     with torch.no_grad():
@@ -463,11 +463,11 @@ def create_images_for_dice_or_s_score(args, netG, idx_eval, syneval_loader, dice
             if calculate_mae:
                 output_mae += mae(t_fake, t_img)
             for k in range(c_trg.size(0)):
-                filename = os.path.join(args.eval_dir,"Segmentation",
-                                        '%.4i_%.2i.png' % (args.sepoch * args.eval_batch_size + (k + 1), epoch + 1))
+                filename = os.path.join(args.eval_dir,"Segmentation",subp,
+                                        '%.4i.png' % (epoch * args.eval_batch_size + (k + 1)))
                 save_image(t_fake[k], ncol=1, filename=filename, args=args)
-                filename = os.path.join(args.eval_dir,"Ground",
-                                        '%.4i_%.2i.png' % (args.sepoch * args.eval_batch_size + (k + 1), epoch + 1))
+                filename = os.path.join(args.eval_dir,"Ground",subp,
+                                        '%.4i.png' % (epoch * args.eval_batch_size + (k + 1)))
                 # if t_img.size(1) == 5:
                 #     t_img = t_img[:, :1]
 
@@ -528,12 +528,8 @@ def calculate_metrics_segmentation(args, net_G):
 
         for i in tqdm(range(len(mod))):  # 2 domains
             # ======= Directories =======
-            ground_dir = os.path.normpath(args.eval_dir+'/Ground')
-            seg_dir = os.path.normpath(args.eval_dir+'/Segmentation')
-            # from torchmetrics import Dice
-            # Vref = jpg_series_reader(ground_dir)
-            # Vseg = jpg_series_reader(seg_dir)
-            # print(Dice(torch.from_numpy(Vseg), torch.from_numpy(Vref)))
+            ground_dir = os.path.normpath(args.eval_dir+'/Ground/dice')
+            seg_dir = os.path.normpath(args.eval_dir+'/Segmentation/dice')
             mae_dict["mae/" + mod[i]+str(idx)] = create_images_for_dice_or_s_score(args, net_G, i, syneval_loader, dice_=True, calculate_mae=True)
             # ======= Volume Reading =======
             Vref = png_series_reader(ground_dir)
@@ -550,10 +546,11 @@ def calculate_metrics_segmentation(args, net_G):
             # calculate s score
             create_images_for_dice_or_s_score(args, net_G, i, syneval_loader, dice_=False)
             # ======= Volume Reading =======
-            Vref = png_series_reader(ground_dir)
-            Vseg = png_series_reader(seg_dir)
+            Vref = png_series_reader(os.path.join(ground_dir,"s_score"))
+            Vseg = png_series_reader(os.path.join(seg_dir,"s_score"))
             s_score = DICE(Vref, Vseg)
             s_score_dict["S-SCORE/" + mod[i]+str(idx)] = s_score
+    
     dice_d, s_score_d, iou_d, mae_d =  {}, {}, {}, {}
     for i in range(len(mod)):
         dice_d["DICE/" + mod[i]] = sum([dice_dict["DICE/" + mod[i]+str(idx)] for idx in range(tot_rep)])/tot_rep
@@ -562,6 +559,32 @@ def calculate_metrics_segmentation(args, net_G):
         mae_d["mae/" + mod[i]] = sum([mae_dict["mae/" + mod[i]+str(idx)] for idx in range(tot_rep)])/tot_rep
 
     return dice_d, s_score_d, iou_d, mae_d 
+
+def my_metrics():
+    fid_scores={}
+    #calculate FID entire translated image
+    p = "dataset/train/trainimgr"
+    eval_path = "results/color_pretrained_256/valimg_to_valimgr"
+    src = "img"
+    to = "imgr"
+    x = str(subprocess.check_output(f'python -m pytorch_fid "{p}" "{eval_path}" --device {device} --batch-size 50',
+                shell=True))
+    x = x.split(' ')[-1][:-3]
+    fid_scores["FID/" + src + " to " + to] = float(x)
+    
+    # #calculate FID translated image without targets
+    # print()
+    #calculate FID translated targets
+    p = "results/color_pretrained_256/Ground/dice"
+    eval_path = "results/color_pretrained_256/Segmentation/dice"
+    src = "img"
+    to = "imgr"
+    x = str(subprocess.check_output(f'python -m pytorch_fid "{p}" "{eval_path}" --device {device} --batch-size 50',
+                shell=True))
+    x = x.split(' ')[-1][:-3]
+    fid_scores["FID_target/" + src + " to " + to] = float(x)
+    #see if FID(trans_targ) > FID(trans_without_t)
+    print(fid_scores)
 
 
 def calculae_metrics_translation(args, net_G):
@@ -576,17 +599,18 @@ def calculae_metrics_translation(args, net_G):
     fid_dict = calculate_pytorch_fid(args)
     fid_ignite_dict = calculate_ignite_fid(args)
     IS_ignite_dict = calculate_ignite_inception_score(args)
-
+    
     return fid_stargan, fid_dict, IS_ignite_dict, fid_ignite_dict 
 
 
 def calculate_all_metrics(args, net_G, device="cuda" if torch.cuda.is_available() else "cpu"):
     args.eval_dir=os.path.join(args.eval_dir, args.experiment_name)
-    os.makedirs(args.eval_dir, exist_ok=True)
+    # os.makedirs(args.eval_dir, exist_ok=True)
 
-    fid_stargan, fid_dict, IS_ignite_dict, fid_ignite_dict = calculae_metrics_translation(args, net_G)
+    # fid_stargan, fid_dict, IS_ignite_dict, fid_ignite_dict = calculae_metrics_translation(args, net_G)
     dice_dict, s_score_dict, iou_dict, mae_dict = calculate_metrics_segmentation(args, net_G)
     print(dice_dict, s_score_dict, iou_dict, mae_dict)
+    my_metrics()
     return fid_stargan, fid_dict, dice_dict, s_score_dict, iou_dict, IS_ignite_dict, fid_ignite_dict, mae_dict
 
 
@@ -613,3 +637,10 @@ def evaluation(args):
         wandb.log(dict(fid_ignite_dict), step=ii + 1, commit=False)
         wandb.log(dict(mae_dict), step=ii + 1, commit=False)
         wandb.log(iou_dict, commit=True)
+
+
+
+
+
+
+

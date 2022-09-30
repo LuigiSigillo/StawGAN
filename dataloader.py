@@ -150,7 +150,7 @@ class DroneVeichleDataset(Dataset):
             print("total size:{}".format(len(self.raw_dataset)))
             
     def __getitem__(self, item):
-        img, shape_mask, class_label, seg_mask = self.raw_dataset[item][0][0],\
+        img, paired_img, class_label, seg_mask = self.raw_dataset[item][0][0],\
                                                  self.raw_dataset[item][0][1], \
                                                  self.raw_dataset[item][1], \
                                                  self.label_dataset[item]
@@ -158,7 +158,7 @@ class DroneVeichleDataset(Dataset):
         if img.shape[0]!=self.img_size:
             img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
             seg_mask = cv2.resize(seg_mask, (self.img_size, self.img_size), interpolation=cv2.INTER_NEAREST)
-            shape_mask = cv2.resize(shape_mask, (self.img_size, self.img_size), interpolation=cv2.INTER_NEAREST)
+            paired_img = cv2.resize(paired_img, (self.img_size, self.img_size), interpolation=cv2.INTER_NEAREST)
         
         #trhee channels for seg mask
         # print(seg_mask.shape, img.shape)
@@ -173,19 +173,19 @@ class DroneVeichleDataset(Dataset):
             if random.random() > 0.5:
                 img = cv2.flip(img, 1)
                 seg_mask = cv2.flip(seg_mask, 1)
-                shape_mask = cv2.flip(shape_mask, 1)
+                paired_img = cv2.flip(paired_img, 1)
                 t_img = cv2.flip(t_img, 1)
         #  scale to [-1,1]
         img = (img - 0.5) / 0.5
         t_img = (t_img - 0.5) / 0.5
 
         if len(img.shape)>2:
-            img, t_img, shape_mask, seg_mask, class_label = self.get_item_rgb(img, t_img, shape_mask, seg_mask, class_label)
+            img, t_img, paired_img, seg_mask, class_label = self.get_item_rgb(img, t_img, paired_img, seg_mask, class_label)
             
         else:
-            img, t_img, shape_mask, seg_mask, class_label = self.get_item_grey(img, t_img, shape_mask, seg_mask, class_label)
+            img, t_img, paired_img, seg_mask, class_label = self.get_item_grey(img, t_img, paired_img, seg_mask, class_label)
 
-        return img, t_img, shape_mask, seg_mask, class_label
+        return img, t_img, paired_img, seg_mask, class_label
         
     def __len__(self):
         return len(self.raw_dataset)
@@ -198,40 +198,40 @@ class DroneVeichleDataset(Dataset):
         self.colored_data = colored_data
         self.paired_image = paired_image
 
-    def get_item_rgb(self, img, t_img, shape_mask, seg_mask, class_label):
+    def get_item_rgb(self, img, t_img, paired_img, seg_mask, class_label):
         if not self.colored_data:
             img = grayscale(torch.from_numpy(img).type(torch.FloatTensor).permute(2, 0, 1))
             t_img = grayscale(torch.from_numpy(t_img).type(torch.FloatTensor).permute(2, 0, 1))
-            shape_mask = grayscale(torch.from_numpy(shape_mask).type(torch.FloatTensor).permute(2, 0, 1))
+            paired_img = grayscale(torch.from_numpy(paired_img).type(torch.FloatTensor).permute(2, 0, 1))
         else:
             img, t_img = torch.from_numpy(img).type(torch.FloatTensor).permute(2, 0, 1), \
                 torch.from_numpy(t_img).type(torch.FloatTensor).permute(2, 0, 1)
-            shape_mask = torch.from_numpy(shape_mask).type(torch.FloatTensor).permute(2, 0, 1) if len(shape_mask.shape) ==3 else \
-                            torch.from_numpy(shape_mask).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
+            paired_img = torch.from_numpy(paired_img).type(torch.FloatTensor).permute(2, 0, 1) if len(paired_img.shape) ==3 else \
+                            torch.from_numpy(paired_img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
         return img, \
             t_img , \
-            shape_mask, \
+            paired_img, \
             torch.from_numpy(seg_mask).type(torch.LongTensor).unsqueeze(dim=0), \
             torch.from_numpy(class_label).type(torch.FloatTensor)
 
-    def get_item_grey(self, img, t_img, shape_mask, seg_mask, class_label):
+    def get_item_grey(self, img, t_img, paired_img, seg_mask, class_label):
         if not self.colored_data:
             img = torch.from_numpy(img).type(torch.FloatTensor).unsqueeze(dim=0)
             t_img = torch.from_numpy(t_img).type(torch.FloatTensor).unsqueeze(dim=0)
-            shape_mask = torch.from_numpy(shape_mask).type(torch.FloatTensor).unsqueeze(dim=0)
+            paired_img = torch.from_numpy(paired_img).type(torch.FloatTensor).unsqueeze(dim=0)
         else:
             img =  torch.from_numpy(img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
             t_img = torch.from_numpy(t_img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
             if self.paired_image:
-                shape_mask = torch.from_numpy(shape_mask).type(torch.FloatTensor).permute(2, 0, 1) if len(shape_mask.shape) ==3 else \
-                            torch.from_numpy(shape_mask).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
-                # shape_mask = torch.from_numpy(shape_mask).type(torch.FloatTensor).permute(2, 0, 1)
+                paired_img = torch.from_numpy(paired_img).type(torch.FloatTensor).permute(2, 0, 1) if len(paired_img.shape) ==3 else \
+                            torch.from_numpy(paired_img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
+                # paired_img = torch.from_numpy(paired_img).type(torch.FloatTensor).permute(2, 0, 1)
             else:
-                shape_mask = torch.from_numpy(shape_mask).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
+                paired_img = torch.from_numpy(paired_img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
 
         return img, \
             t_img, \
-            shape_mask, \
+            paired_img, \
             torch.from_numpy(seg_mask).type(torch.LongTensor).unsqueeze(dim=0), \
             torch.from_numpy(class_label).type(torch.FloatTensor)
 
@@ -240,7 +240,7 @@ def testing_dataset():
     dt = DroneVeichleDataset(split="val", img_size=256)
     # dt = ChaosDataset_Syn_new(path="../QWT/TarGAN/datasets/chaos2019")
     syn_loader = DataLoader(dt, shuffle=True)
-    for epoch, (x_real, t_img, shape_mask, mask, label_org) in enumerate(syn_loader):
+    for epoch, (x_real, t_img, paired_img, mask, label_org) in enumerate(syn_loader):
         plt.axis('off')
         plt.subplot(241)
         plt.imshow(denorm(x_real).squeeze().cpu().numpy().transpose(1,2,0))
@@ -249,7 +249,7 @@ def testing_dataset():
         plt.imshow(denorm(t_img).squeeze().cpu().numpy().transpose(1,2,0))
         plt.title('target image')
         plt.subplot(243)
-        plt.imshow(shape_mask.squeeze().cpu().numpy().transpose(1,2,0),)
+        plt.imshow(paired_img.squeeze().cpu().numpy().transpose(1,2,0),)
         plt.title('paired image')
         plt.subplot(244)
         plt.imshow(denorm(mask).squeeze().cpu().numpy(),cmap=plt.get_cmap('gray'))
