@@ -38,7 +38,7 @@ def label_preprocess(data):
 
 # return image and optioanlly the masked image, in this case we want just to remove the white border
 # so the idea is to put in black all the white pixels
-def raw_preprocess(data, get_s=False, path_pair=None, img_size=256):
+def raw_preprocess(data, get_s=False, path_pair=None, img_size=256, ):
     box = (100, 100, 740, 612)
     if get_s:
         img_pair = Image.open(path_pair)
@@ -235,29 +235,7 @@ class DroneVeichleDataset(Dataset):
             torch.from_numpy(seg_mask).type(torch.LongTensor).unsqueeze(dim=0), \
             torch.from_numpy(class_label).type(torch.FloatTensor)
 
-from utils import denorm
-def testing_dataset():
-    dt = DroneVeichleDataset(split="val", img_size=256)
-    # dt = ChaosDataset_Syn_new(path="../QWT/TarGAN/datasets/chaos2019")
-    syn_loader = DataLoader(dt, shuffle=True)
-    for epoch, (x_real, t_img, paired_img, mask, label_org) in enumerate(syn_loader):
-        plt.axis('off')
-        plt.subplot(241)
-        plt.imshow(denorm(x_real).squeeze().cpu().numpy().transpose(1,2,0))
-        plt.title('real image')
-        plt.subplot(242)
-        plt.imshow(denorm(t_img).squeeze().cpu().numpy().transpose(1,2,0))
-        plt.title('target image')
-        plt.subplot(243)
-        plt.imshow(paired_img.squeeze().cpu().numpy().transpose(1,2,0),)
-        plt.title('paired image')
-        plt.subplot(244)
-        plt.imshow(denorm(mask).squeeze().cpu().numpy(),cmap=plt.get_cmap('gray'))
-        plt.title('target mask')
-        plt.savefig('test'+str(epoch))
-        # plt.show()
-        if epoch >0:
-            break
+
 
 # testing_dataset()
 
@@ -391,12 +369,26 @@ def save_tensors_dataset(path="dataset", split="train", slices=19, max_length_sl
 # save_tensors_dataset(path="dataset", split="val", slices=2, max_length_slices=2000, img_size=256)
 
 class DefaultDataset(Dataset):
-    def __init__(self, root, img_size=256, transform=None):
-        self.samples = os.listdir(root)
-        self.samples.sort()
+    def __init__(self, root, img_size=256, transform=None, kaist=False):
+        if not kaist:
+            self.samples = os.listdir(root)
+            self.samples.sort()
+            self.root = root
+        else:
+            imageset_txt = "dataset/kaist-cvpr15/imageSets/test-all-20.txt" if "val" in root else "dataset/kaist-cvpr15/imageSets/train-all-04.txt"
+            with open(imageset_txt) as f:
+                llp = [line.strip() for line in f.readlines()]
+            path1,path2 = [],[]
+            for sett in llp:
+                splitted = sett.split("/")
+                splitted.insert(-1,"lwir")
+                final = "/".join(splitted) +".jpg"
+                path1.append(final)
+                path2.append(final.replace("lwir","visible"))
+            self.samples = (path1+path2)
+            self.root = "dataset/kaist-cvpr15/images/"
         self.transform = transform
         self.targets = None
-        self.root = root
         mean = [0.5, 0.5, 0.5]
         std = [0.5, 0.5, 0.5]
         self.box = (100, 100, 740, 612)
@@ -897,3 +889,226 @@ def full_quat_downsample(q0, q1, q2, q3):
     q2 = downsample(q2)
     q3 = downsample(q3)
     return q0, q1, q2, q3
+
+
+
+class KAISTDataset(Dataset):
+    def __init__(self, path="dataset", split='train', modals=('img','imgr'),transforms=None, img_size=128, to_be_loaded=False, colored_data=True, paired_image=False):
+        super(KAISTDataset, self).__init__()
+        imageset_txt = "dataset/kaist-cvpr15/imageSets/test-all-20.txt" if split == "val" else  "dataset/kaist-cvpr15/imageSets/train-all-04.txt"
+        if not to_be_loaded:
+            self.paired_image = paired_image
+            self.img_size = img_size
+            root = "dataset/kaist-cvpr15/images/"
+            # setss = os.listdir(root)
+            # for sett in setss:
+            #     vvs = os.listdir(os.path.join(root,sett))
+            #     for vv in vvs:
+            with open(imageset_txt) as f:
+                llp = [line.strip() for line in f.readlines()]
+            print(len(llp))
+            path1,path2, raw_path = [],[],[]
+            for sett in llp:
+                splitted = sett.split("/")
+                splitted.insert(-1,"lwir")
+                final = "/".join(splitted) +".jpg"
+                path1.append(final)
+                path2.append(final.replace("lwir","visible"))
+            list_path = sorted(path1+path2)
+            random.shuffle(list_path)
+            for x in list_path[:1000]:
+                if "lwir" in x:
+                    c = np.array(0) #infrared
+                    # tmp =  x.replace(split+"imgr",split+"masksr")
+                elif "visible" in x:
+                    c = np.array(1)
+                    # tmp =  x.replace(split+"img",split+"masks")
+                else:
+                    raise Exception('wrong path probably')
+                raw_path.append([x,c])
+                            
+            #########
+            self.raw_dataset = []
+            self.label_dataset = []
+            #######
+            self.transfroms = transforms
+
+            for i,c in tqdm(raw_path): 
+                if c == 0: #infrared
+                    img = Image.open(root+i)
+                    # convert image to numpy array
+                    img = np.asarray(img)
+                    #lasciamo qui sotto?????
+                    img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
+                    img, img_pair = self.raw_preprocess(img, get_s=True, path_pair=root+ i.replace("lwir","visible"), img_size = self.img_size)
+
+                    self.raw_dataset.append([(img, img_pair), c])
+                    #?????
+                    # a =  i.replace(split+"imgr",split+"masksr")
+                    # img_segm = Image.open(root+a)
+
+                    # # convert image to numpy array
+                    # img_segm = np.asarray(img_segm)
+                    # img_segm = cv2.resize(img_segm, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
+
+                    # self.label_dataset.append(self.label_preprocess(img_segm))
+                elif c==1:
+                        img = Image.open(root+i)
+
+                        # convert image to numpy array
+                        img = np.asarray(img)
+                        # img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
+                        #lasciamo qui sotto?????
+                        img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
+                        img, img_pair = self.raw_preprocess(img, get_s=True, path_pair=root+i.replace("visible","lwir"), img_size = self.img_size)
+
+                        self.raw_dataset.append([(img, img_pair), c])
+                        #?????
+                        # a =  i.replace(split+"img",split+"masks")
+                        # img_segm = Image.open(root+a)
+
+                        # # convert image to numpy array
+                        # img_segm = np.asarray(img_segm)
+                        # img_segm = cv2.resize(img_segm, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
+
+                        # self.label_dataset.append(self.label_preprocess(img_segm))
+
+
+            self.split = split
+            self.colored_data = colored_data
+            print("DroneVeichle "+ split+ " data load success!")
+            print("total size:{}".format(len(self.raw_dataset)))
+            
+    def __getitem__(self, item):
+        img, paired_img, class_label = self.raw_dataset[item][0][0],\
+                                                 self.raw_dataset[item][0][1], \
+                                                 self.raw_dataset[item][1], \
+
+        if img.shape[0]!=self.img_size:
+            img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
+            paired_img = cv2.resize(paired_img, (self.img_size, self.img_size), interpolation=cv2.INTER_NEAREST)
+        
+        
+        if self.split == 'train':
+            if random.random() > 0.5:
+                img = cv2.flip(img, 1)
+                paired_img = cv2.flip(paired_img, 1)
+        #  scale to [-1,1]
+        img = (img - 0.5) / 0.5
+
+        if len(img.shape)>2:
+            return self.get_item_rgb(img, paired_img, class_label)
+        else:
+            return self.get_item_grey(img, paired_img, class_label)
+
+        
+    def __len__(self):
+        return len(self.raw_dataset)
+
+    def load_dataset(self, path="dataset", split='train', idx = "0", img_size=128, colored_data = True, paired_image=False):
+        self.label_dataset = torch.load(f"{path}/{idx}_{split}_label_dataset.pt")
+        self.raw_dataset = torch.load(f"{path}/{idx}_{split}_raw_dataset.pt")
+        self.img_size = img_size
+        self.split=split
+        self.colored_data = colored_data
+        self.paired_image = paired_image
+
+    def get_item_rgb(self, img, paired_img, class_label):
+        if not self.colored_data:
+            img = grayscale(torch.from_numpy(img).type(torch.FloatTensor).permute(2, 0, 1))
+            paired_img = grayscale(torch.from_numpy(paired_img).type(torch.FloatTensor).permute(2, 0, 1))
+        else:
+            img = torch.from_numpy(img).type(torch.FloatTensor).permute(2, 0, 1)
+            paired_img = torch.from_numpy(paired_img).type(torch.FloatTensor).permute(2, 0, 1) if len(paired_img.shape) ==3 else \
+                            torch.from_numpy(paired_img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
+        return img, \
+            paired_img, \
+            torch.from_numpy(class_label).type(torch.FloatTensor)
+
+    def get_item_grey(self, img, paired_img, class_label):
+        if not self.colored_data:
+            img = torch.from_numpy(img).type(torch.FloatTensor).unsqueeze(dim=0)
+            paired_img = torch.from_numpy(paired_img).type(torch.FloatTensor).unsqueeze(dim=0)
+        else:
+            img =  torch.from_numpy(img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
+            if self.paired_image:
+                paired_img = torch.from_numpy(paired_img).type(torch.FloatTensor).permute(2, 0, 1) if len(paired_img.shape) ==3 else \
+                            torch.from_numpy(paired_img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
+                # paired_img = torch.from_numpy(paired_img).type(torch.FloatTensor).permute(2, 0, 1)
+            else:
+                paired_img = torch.from_numpy(paired_img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
+
+        return img, \
+            paired_img, \
+            torch.from_numpy(class_label).type(torch.FloatTensor)
+
+    def label_preprocess(self,data):
+        # # data = data.astype(dtype=int)
+        # # new_seg = np.zeros(data.shape, data.dtype)
+        # # new_seg[(data > 55) & (data <= 70)] = 1
+        # out = data.copy()
+
+        # return out.astype(dtype=int)
+
+        data = data.astype(dtype=int)
+        # print(data.max())
+        new_seg = np.zeros(data.shape, data.dtype)
+        new_seg[data >15] = 1
+        # plt.imshow(new_seg,cmap='gray')
+        # plt.savefig('label_prep')
+        # raise Exception
+        return new_seg
+
+
+    # return image and optioanlly the masked image, in this case we want just to remove the white border
+    # so the idea is to put in black all the white pixels
+    def raw_preprocess(self, data, get_s=False, path_pair=None, img_size=256, ):
+        if get_s:
+            img_pair = Image.open(path_pair)
+            # convert image to numpy array
+            img_pair = np.asarray(img_pair)
+            #lasciamo qui sotto?????
+            img_pair = cv2.resize(img_pair, (img_size, img_size), interpolation=cv2.INTER_LINEAR)
+            
+            data = data.astype(dtype=float)
+            img_pair = img_pair.astype(dtype=float)
+            out = data.copy()
+            out_pair = img_pair.copy()
+            
+            #normalizzazione
+            out = (out - out.min()) / (out.max() - out.min())
+            out_pair = (out_pair - out_pair.min()) / (out_pair.max() - out_pair.min())
+
+            return out, out_pair
+        data = data.astype(dtype=float)
+        # data[data<50] = 0
+        out = data.copy()
+        #normalizzazione?
+        out = (out - out.min()) / (out.max() - out.min())
+
+        return out
+from utils import denorm
+def testing_dataset():
+    dt = KAISTDataset(split="val", img_size=128)
+    # dt = ChaosDataset_Syn_new(path="../QWT/TarGAN/datasets/chaos2019")
+    syn_loader = DataLoader(dt, shuffle=True)
+    # for epoch, (x_real, t_img, paired_img, mask, label_org) in enumerate(syn_loader):
+    for epoch, (x_real, paired_img, label_org) in enumerate(syn_loader):
+
+        plt.axis('off')
+        plt.subplot(241)
+        plt.imshow(denorm(x_real).squeeze().cpu().numpy().transpose(1,2,0))
+        plt.title('real image')
+        #plt.subplot(242)
+        # plt.imshow(denorm(t_img).squeeze().cpu().numpy().transpose(1,2,0))
+        # plt.title('target image')
+        plt.subplot(243)
+        plt.imshow(paired_img.squeeze().cpu().numpy().transpose(1,2,0),)
+        plt.title('paired image')
+        # plt.subplot(244)
+        # plt.imshow(denorm(mask).squeeze().cpu().numpy(),cmap=plt.get_cmap('gray'))
+        # plt.title('target mask')
+        plt.savefig('test'+str(epoch))
+        # plt.show()
+        if epoch >0:
+            break

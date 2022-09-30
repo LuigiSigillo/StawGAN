@@ -24,22 +24,22 @@ def train(args):
 
     # set_seed(args.random_seed)
     if not args.preloaded_data:
-        syn_dataset = DroneVeichleDataset(
+        syn_dataset = KAISTDataset(
             path=args.dataset_path, split='train', colored_data=args.color_images, paired_image=args.loss_ssim)
         syn_loader = DataLoader(
             syn_dataset, batch_size=args.batch_size, shuffle=True)
-        syneval_dataset = DroneVeichleDataset(
+        syneval_dataset = KAISTDataset(
             path=args.dataset_path, split='val', colored_data=args.color_images, paired_image=args.loss_ssim)
     else:
         idx = 0
         args.epoch = 10*args.epoch
-        syn_dataset = DroneVeichleDataset(to_be_loaded=True)
+        syn_dataset = KAISTDataset(to_be_loaded=True)
         syn_dataset.load_dataset(path=args.dataset_path+"/tensors/tensors_paired", split="train",
                                  idx=str(idx), img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim)
         syn_loader = DataLoader(
             syn_dataset, batch_size=args.batch_size, shuffle=True)
 
-        syneval_dataset = DroneVeichleDataset(to_be_loaded=True)
+        syneval_dataset = KAISTDataset(to_be_loaded=True)
         syneval_dataset.load_dataset(path=args.dataset_path+"/tensors/tensors_paired", split="val", idx=str(
             idx), img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim)
 
@@ -88,7 +88,7 @@ def train(args):
     with wandb.init(config=args, project="targan_drone") as run:
         wandb.run.name = args.experiment_name
         for epoch in tqdm(range(args.sepoch, args.epoch), initial=args.sepoch, total=args.epoch):
-            for i, (x_real, t_img, shape_mask, mask, label_org) in tqdm(enumerate(syn_loader), total=len(syn_loader)):
+            for i, (x_real, shape_mask, label_org) in tqdm(enumerate(syn_loader), total=len(syn_loader)):
                 # 1. Preprocess input data
                 # Generate target domain labels randomly.
                 rand_idx = torch.randperm(label_org.size(0))
@@ -111,14 +111,11 @@ def train(args):
                 g_trg = g_trg.to(device)
                 # Labels for computing classification loss.
                 d_false_org = d_false_org.to(device)
-                mask = mask.to(device)
-                # shape_mask = shape_mask.to(device)
+                shape_mask = shape_mask.to(device)
 
-                t_img = t_img.to(device)
                 # plt.subplot(232)
                 # plt.imshow(t_img[2].cpu().detach().permute(1, 2, 0).numpy())
 
-                index = loss_filter(mask)
                 # 2. Train the discriminator
                 # Compute loss with real whole images.
                 out_src, out_cls = nets.netD_i(x_real)
@@ -132,8 +129,7 @@ def train(args):
 
                 # Compute loss with fake whole images.
                 with torch.no_grad():
-                    x_fake, t_fake = nets.netG(
-                        x_real, t_img, c_trg, wav_type=args.wavelet_type)
+                    x_fake = nets.netG(x_real, None, c_trg, mode="kaist", wav_type=args.wavelet_type)
                 # plt.imshow(  x_fake[2].cpu().detach().permute(1, 2, 0).numpy(), cmap='gray')
                 # plt.savefig('x-fake greyscaled')
                 # raise Exception
@@ -150,35 +146,10 @@ def train(args):
                 d_loss_gp = gradient_penalty(out_src, x_hat, device)
 
                 # compute loss with target images
-                if index.shape[0] != 0:
-                    out_src, out_cls = nets.netD_t(
-                        torch.index_select(t_img, dim=0, index=index))
-                    d_org = torch.index_select(d_org, dim=0, index=index)
-                    d_loss_real_t = -torch.mean(out_src)
-                    d_loss_cls_t = F.binary_cross_entropy_with_logits(
-                        out_cls, d_org, reduction='sum') / out_cls.size(0)
-
-                    out_src, out_f_cls = nets.netD_t(
-                        torch.index_select(t_fake.detach(), dim=0, index=index))
-                    d_false_org = torch.index_select(
-                        d_false_org, dim=0, index=index)
-                    d_loss_fake_t = torch.mean(out_src)
-                    d_loss_f_cls_t = F.binary_cross_entropy_with_logits(out_f_cls, d_false_org,
-                                                                        reduction='sum') / out_f_cls.size(0)
-
-                    x_hat = (alpha * t_img.data + (1 - alpha)
-                             * t_fake.data).requires_grad_(True)
-                    x_hat = torch.index_select(x_hat, dim=0, index=index)
-                    out_src, _ = nets.netD_t(x_hat)
-                    d_loss_gp_t = gradient_penalty(out_src, x_hat, device)
-
-                    dt_loss = d_loss_real_t + d_loss_fake_t + d_loss_cls_t + \
-                        d_loss_gp_t * 10 + d_loss_f_cls_t * args.w_d_false_t_c
-                    w_dt = (-d_loss_real_t - d_loss_fake_t).item()
-                else:
-                    dt_loss = torch.FloatTensor([0]).to(device)
-                    w_dt = 0
-                    d_loss_f_cls_t = torch.FloatTensor([0]).to(device)
+                
+                dt_loss = torch.FloatTensor([0]).to(device)
+                w_dt = 0
+                d_loss_f_cls_t = torch.FloatTensor([0]).to(device)
                 # Backward and optimize.
                 di_loss = d_loss_real + d_loss_fake + d_loss_cls + \
                     d_loss_gp * 10 + d_loss_f_cls * args.w_d_false_c
@@ -194,8 +165,8 @@ def train(args):
 
                 #  3. Train the generator
                 # Original-to-target domain.
-                x_fake, t_fake = nets.netG(
-                    x_real, t_img, c_trg, wav_type=args.wavelet_type)
+                x_fake = nets.netG(
+                    x_real, None, c_trg, mode="kaist", wav_type=args.wavelet_type)
                 out_src, out_cls = nets.netD_i(x_fake)
                 g_loss_fake = -torch.mean(out_src)
                 g_loss_cls = F.binary_cross_entropy_with_logits(
@@ -205,37 +176,24 @@ def train(args):
                 # print(shape_mask.shape,nets.netH(x_fake).shape )
                 # shape_loss = F.mse_loss(nets.netH(x_fake), shape_mask.float())
                 # Target-to-original domain.
-                x_reconst, t_reconst = nets.netG(
-                    x_fake, t_fake, c_org, wav_type=args.wavelet_type)
+                x_reconst = nets.netG(
+                    x_fake, None, c=c_org, mode="kaist", wav_type=args.wavelet_type)
                 g_loss_rec = torch.mean(torch.abs(x_real - x_reconst))
                 if args.loss_ssim:
                     ssim_loss = ssim(x_fake, shape_mask.to(device))
                 else:
                     ssim_loss = torch.tensor(0)
-                if index.shape[0] != 0:
-                    out_src, out_cls = nets.netD_t(
-                        torch.index_select(t_fake, dim=0, index=index))
-                    g_trg = torch.index_select(g_trg, dim=0, index=index)
-                    g_loss_fake_t = -torch.mean(out_src)
-                    g_loss_cls_t = F.binary_cross_entropy_with_logits(
-                        out_cls, g_trg, reduction='sum') / out_cls.size(0)
-                    gt_loss = g_loss_fake_t + g_loss_cls_t * args.w_g_t_c
-                else:
-                    gt_loss = torch.FloatTensor([0]).to(device)
-                    g_loss_cls_t = torch.FloatTensor([0]).to(device)
+                
+                gt_loss = torch.FloatTensor([0]).to(device)
+                g_loss_cls_t = torch.FloatTensor([0]).to(device)
 
                 # print(nets.netH(t_fake).shape, mask.shape)
 
                 # mask.repeat(1, 3, 1, 1).float()
-                shape_loss_t = F.mse_loss(nets.netH(t_fake), mask.float())
-                g_loss_rec_t = torch.mean(torch.abs(t_img - t_reconst))
-                cross_loss = torch.mean(
-                    torch.abs(denorm(x_fake) * mask - denorm(t_fake)))
+                
                 # Backward and optimize.
                 gi_loss = g_loss_fake + args.w_cycle * g_loss_rec + \
                     g_loss_cls * args.w_g_c  +ssim_loss*args.w_ssim # + shape_loss* args.w_shape
-                gt_loss = gt_loss + args.w_cycle * g_loss_rec_t + \
-                    shape_loss_t * args.w_shape + cross_loss * args.w_g_cross
                 g_loss = gi_loss + gt_loss
 
                 optims.g_optimizier.zero_grad()
@@ -259,8 +217,8 @@ def train(args):
                     all_losses["train/G/loss_cls"] = g_loss_cls.item()
                     all_losses["train/G/loss_cls_t"] = g_loss_cls_t.item()
                     all_losses["train/G/loss_ssim"] = ssim_loss.item()
-                    all_losses["train/G/loss_shape_t"] = shape_loss_t.item()
-                    all_losses["train/G/loss_cross"] = cross_loss.item()
+                    # all_losses["train/G/loss_shape_t"] = shape_loss_t.item()
+                    # all_losses["train/G/loss_cross"] = cross_loss.item()
                     wandb.log(all_losses, step=ii, commit=True)
 
                 ii = ii + 1
@@ -268,7 +226,7 @@ def train(args):
 
             if (epoch + 1) % 1 == 0 and (epoch + 1) > 0:
                 # show syn images after every epoch
-                x_real, x_infrared, x_rgb, trg_orig, trg_infra_fake, trg_rgb_fake = plot_images(
+                x_real, x_infrared, x_rgb = plot_images(
                     nets.netG_use, syneval_dataset, device, args.c_dim, args.wavelet_type)
                 # print(x.shape, y.shape, z.shape)
                 # plt.subplot(231)
@@ -284,12 +242,12 @@ def train(args):
                     {"ir": wandb.Image(x_infrared, caption="ir_" + str(epoch))}, commit=False)
                 wandb.log(
                     {"img": wandb.Image(x_rgb, caption="img_" + str(epoch))}, commit=False)
-                wandb.log({"orig_trg": wandb.Image(
-                    trg_orig, caption="orig_trg_" + str(epoch))}, commit=False)
-                wandb.log({"ir_trg": wandb.Image(trg_infra_fake,
-                          caption="ir_trg_" + str(epoch))}, commit=False)
-                wandb.log({"img_trg": wandb.Image(trg_rgb_fake,
-                          caption="img_trg_" + str(epoch))}, commit=False)
+                # wandb.log({"orig_trg": wandb.Image(
+                #     trg_orig, caption="orig_trg_" + str(epoch))}, commit=False)
+                # wandb.log({"ir_trg": wandb.Image(trg_infra_fake,
+                #           caption="ir_trg_" + str(epoch))}, commit=False)
+                # wandb.log({"img_trg": wandb.Image(trg_rgb_fake,
+                #           caption="img_trg_" + str(epoch))}, commit=False)
 
                 # raise Exception
 

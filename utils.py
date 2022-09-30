@@ -136,11 +136,18 @@ def plot_images(netG_use, syneval_dataset, device, c_dim, wavelet_type):
     idx = random.randint(0,200)
     with torch.no_grad():
         img = syneval_dataset[idx][0]
-        trg_segm = syneval_dataset[idx][3]
         img = img.unsqueeze(dim=0).to(device)
-        trg_orig = syneval_dataset[idx][1]
-        trg_orig = trg_orig.unsqueeze(dim=0).to(device)
+        try:
+            trg_segm = syneval_dataset[idx][3]
 
+            trg_orig = syneval_dataset[idx][1]
+            trg_orig = trg_orig.unsqueeze(dim=0).to(device)
+        except:
+            pred_t1_img = netG_use(img, c=getLabel(img, device, 0, c_dim), mode="kaist", wav_type=wavelet_type)
+            pred_t2_img = netG_use(img, c=getLabel(img, device, 1, c_dim), mode="kaist", wav_type=wavelet_type)
+            return denorm(img).cpu(), \
+            denorm(pred_t1_img).cpu(), \
+            denorm(pred_t2_img).cpu(), \
         # print(getLabel(img, device, 0, args.c_dim).shape,img.shape)
         pred_t1_img, pred_t1_targ = netG_use(img, trg_orig, c=getLabel(img, device, 0, c_dim),wav_type=wavelet_type)
         pred_t2_img, pred_t2_targ = netG_use(img, trg_orig, c=getLabel(img, device, 1, c_dim), wav_type=wavelet_type)

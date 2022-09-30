@@ -605,12 +605,10 @@ def calculae_metrics_translation(args, net_G):
 
 def calculate_all_metrics(args, net_G, device="cuda" if torch.cuda.is_available() else "cpu"):
     args.eval_dir=os.path.join(args.eval_dir, args.experiment_name)
-    # os.makedirs(args.eval_dir, exist_ok=True)
+    os.makedirs(args.eval_dir, exist_ok=True)
 
-    # fid_stargan, fid_dict, IS_ignite_dict, fid_ignite_dict = calculae_metrics_translation(args, net_G)
+    fid_stargan, fid_dict, IS_ignite_dict, fid_ignite_dict = calculae_metrics_translation(args, net_G)
     dice_dict, s_score_dict, iou_dict, mae_dict = calculate_metrics_segmentation(args, net_G)
-    print(dice_dict, s_score_dict, iou_dict, mae_dict)
-    my_metrics()
     return fid_stargan, fid_dict, dice_dict, s_score_dict, iou_dict, IS_ignite_dict, fid_ignite_dict, mae_dict
 
 

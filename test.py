@@ -14,9 +14,37 @@
 # # print(cropped_image.size) # Output: (1920, 1280)
 # grayscale(image).save('grayscale.jpg')
 # imager.save('rr.jpg')
-a = [1,2,3,4,5,6]
 
-for j in range(20):
-    for i in a:
-        print(i)
-    a = [7,8,9,10,11]
+
+# import os
+# import numpy as np
+# root = "dataset/kaist-cvpr15/images"
+# # setss = os.listdir(root)
+# # for sett in setss:
+# #     vvs = os.listdir(os.path.join(root,sett))
+# #     for vv in vvs:
+# with open("dataset/kaist-cvpr15/imageSets/train-all-04.txt") as f:
+#     llp = [line.strip() for line in f.readlines()]
+# print(len(llp))
+# path1,path2, raw_path = [],[],[]
+# for sett in llp:
+#     splitted = sett.split("/")
+#     splitted.insert(-1,"lwir")
+#     final = "/".join(splitted) +".jpg"
+#     path1.append(final)
+#     path2.append(final.replace("lwir","visible"))
+# list_path = sorted(path1+path2)
+
+# print(len(list_path))
+# for x in list_path:
+#     if "lwir" in x:
+#         c = np.array(0) #infrared
+#         # tmp =  x.replace(split+"imgr",split+"masksr")
+#     elif "visible" in x:
+#         c = np.array(1)
+#         # tmp =  x.replace(split+"img",split+"masks")
+#     else:
+#         raise Exception('wrong path probably')
+#     raw_path.append([x,c])
+
+# print(raw_path[2])        

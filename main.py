@@ -3,7 +3,8 @@ import random
 import numpy as np
 import torch
 from metrics import evaluation
-from train import train
+import train
+import train_kaist
 def set_deterministic(seed=42):
     random.seed(seed)
     np.random.seed(seed)
@@ -92,6 +93,9 @@ if __name__ == '__main__':
     set_deterministic(args.random_seed)
     
     if args.mode=="train":
-        train(args)
+        if args.dataset=="droneveichle":
+            train.train(args)
+        else:
+            train_kaist.train(args)
     elif args.mode=="eval":
         evaluation(args)
