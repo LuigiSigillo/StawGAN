@@ -546,8 +546,10 @@ def calculate_metrics_segmentation(args, net_G):
             # calculate s score
             create_images_for_dice_or_s_score(args, net_G, i, syneval_loader, dice_=False)
             # ======= Volume Reading =======
-            Vref = png_series_reader(os.path.join(ground_dir,"s_score"))
-            Vseg = png_series_reader(os.path.join(seg_dir,"s_score"))
+            ground_dir = os.path.normpath(args.eval_dir+'/Ground/s_score')
+            seg_dir = os.path.normpath(args.eval_dir+'/Segmentation/s_score')
+            Vref = png_series_reader(ground_dir)
+            Vseg = png_series_reader(seg_dir)
             s_score = DICE(Vref, Vseg)
             s_score_dict["S-SCORE/" + mod[i]+str(idx)] = s_score
     

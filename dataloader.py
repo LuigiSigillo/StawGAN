@@ -373,6 +373,8 @@ class DefaultDataset(Dataset):
         if not kaist:
             self.samples = os.listdir(root)
             self.samples.sort()
+            if "ground_truth" in self.samples:
+                self.samples.remove("ground_truth")
             self.root = root
         else:
             imageset_txt = "dataset/kaist-cvpr15/imageSets/test-all-20.txt" if "val" in root else "dataset/kaist-cvpr15/imageSets/train-all-04.txt"
@@ -386,6 +388,8 @@ class DefaultDataset(Dataset):
                 path1.append(final)
                 path2.append(final.replace("lwir","visible"))
             self.samples = (path1+path2)
+            if "ground_truth" in self.samples:
+                self.samples.remove("ground_truth")
             self.root = "dataset/kaist-cvpr15/images/"
         self.transform = transform
         self.targets = None
