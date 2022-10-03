@@ -359,7 +359,7 @@ def png_series_reader(dir):
         image = cv2.imread(filename, 0)
         V.append(image)
     V = np.array(V, order='A')
-    V = V.astype(bool)
+    #V = V.astype(bool)
     return V
 
 def jpg_series_reader(dir, mlen=None):
@@ -562,6 +562,7 @@ def calculate_metrics_segmentation(args, net_G):
 
     return dice_d, s_score_d, iou_d, mae_d 
 
+#TODO
 def my_metrics():
     fid_scores={}
     #calculate FID entire translated image
@@ -597,12 +598,12 @@ def calculae_metrics_translation(args, net_G):
                                       eval_dataset_img,
                                       device
                                       )
-    fid_stargan = calculate_fid_for_all_tasks(args, domains = ["valimg","valimgr"], step=args.epoch*10, mode="stargan")
+    #fid_stargan = calculate_fid_for_all_tasks(args, domains = ["valimg","valimgr"], step=args.epoch*10, mode="stargan")
     fid_dict = calculate_pytorch_fid(args)
     fid_ignite_dict = calculate_ignite_fid(args)
     IS_ignite_dict = calculate_ignite_inception_score(args)
     
-    return fid_stargan, fid_dict, IS_ignite_dict, fid_ignite_dict 
+    return {}, fid_dict, IS_ignite_dict, fid_ignite_dict 
 
 
 def calculate_all_metrics(args, net_G, device="cuda" if torch.cuda.is_available() else "cpu"):
@@ -627,7 +628,6 @@ def evaluation(args):
         wandb.run.name = args.experiment_name
         fid_stargan, fid_dict, dice_dict, s_score_dict, iou_dict, IS_ignite_dict, fid_ignite_dict, mae_dict = calculate_all_metrics(args, net_G)
 
-        # fid = calculate_pytorch_fid()
 
         wandb.log(dict(fid_stargan), step=ii + 1, commit=False)
         wandb.log(dict(fid_dict), step=ii + 1, commit=False)
@@ -637,10 +637,5 @@ def evaluation(args):
         wandb.log(dict(fid_ignite_dict), step=ii + 1, commit=False)
         wandb.log(dict(mae_dict), step=ii + 1, commit=False)
         wandb.log(iou_dict, commit=True)
-
-
-
-
-
 
 

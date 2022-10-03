@@ -56,6 +56,7 @@ if __name__ == '__main__':
     parser.add_argument('-epoch', type=int, default=50)
     parser.add_argument('-sepoch', type=int, default=0)
     parser.add_argument("-preloaded_data", type=str2bool, nargs='?', const=True, default=True, help="Activate nice mode.")
+    parser.add_argument("-preloaded_data_eval", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
     parser.add_argument("-pretrained_generator", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
     parser.add_argument("-color_images", type=str2bool, nargs='?', const=True, default=True, help="Activate nice mode.")
     parser.add_argument('-wavelet_type', type=str,default=None) #real or quat
