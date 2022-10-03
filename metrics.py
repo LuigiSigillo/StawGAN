@@ -20,7 +20,7 @@ import glob
 import cv2
 from scipy import linalg
 import subprocess
-from ignite.metrics import FID, InceptionScore
+from ignite.metrics import FID, InceptionScore, PSNR
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -53,8 +53,8 @@ def calculate_pytorch_fid(args):
 
 def fid_ignite(true, pred):
     fid = FID()
-    pred = torch.from_numpy(pred).to(device)
-    true = torch.from_numpy(true).to(device)
+    pred = torch.from_numpy(pred).float().to(device)
+    true = torch.from_numpy(true).float().to(device)
     if len(pred.shape) != 4:
         pred = pred.unsqueeze(1)
     if pred.size(1) != 3:
@@ -64,11 +64,28 @@ def fid_ignite(true, pred):
         true = true.unsqueeze(1)
     if true.size(1) != 3:
         true = true.repeat(1, 3, 1, 1)
-    print(pred.shape, true.shape)
     fid.update([pred, true])
 
     valid_fid = fid.compute()
     return valid_fid
+
+
+def psnr_ignite(true, pred):
+    psnr = PSNR(data_range=255)
+    
+    pred = torch.from_numpy(pred).float().to(device)
+    true = torch.from_numpy(true).float().to(device)
+    if len(pred.shape) != 4:
+        pred = pred.unsqueeze(1)
+    if pred.size(1) != 3:
+        pred = pred.repeat(1, 3, 1, 1)
+
+    if len(true.shape) != 4:
+        true = true.unsqueeze(1)
+    if true.size(1) != 3:
+        true = true.repeat(1, 3, 1, 1)
+    psnr.update([pred, true])
+    return psnr.compute()
 
 
 def inception_score_ignite(pred):
@@ -87,15 +104,17 @@ def inception_score_ignite(pred):
 
 
 def calculate_ignite_fid(args):
+    from torchmetrics import StructuralSimilarityIndexMeasure
+    ssim = StructuralSimilarityIndexMeasure()
     path_real = [args.dataset_path + "/train/trainimg", args.dataset_path + "/train/trainimgr"]
 
     eval_root = args.eval_dir
-    fid_scores = {}
+    fid_scores,ssim_scores, psnr_scores, IS_scores = {},{}, {}, {}
     modals = ('imgr', 'img')
 
     for p in path_real:
         mod = [m for m in modals if 'train'+m != p.split('/')[-1]]
-        ls = 0
+        ls, ls_ssim,ls_is,ls_psnr = 0,0,0,0
         for src in mod:
             if src=='img':
                 eval_path = eval_root +"/val"+ src + "_to_valimgr" 
@@ -109,11 +128,26 @@ def calculate_ignite_fid(args):
             pred = jpg_series_reader(eval_path)
             true = jpg_series_reader(p, pred.shape[0]) 
             x = fid_ignite(true, pred)
-
+            val_ssim = ssim(torch.from_numpy(pred).float(), torch.from_numpy(true).float())
+            val_psnr = psnr_ignite(true,pred)
+            #pred = jpg_series_reader(eval_path)
+            val_is = inception_score_ignite(pred)
+            IS_scores["IS-ignite/" + src + " to " +to ] = float(val_is)
             fid_scores["FID-ignite/" + src + " to " + to] = float(x)
+            ssim_scores["SSIM/" + src + " to " + to] = float(val_ssim)
+            psnr_scores["PSNR/" + src + " to " + to] = float(val_psnr)
+
             ls += float(x)
+            ls_is += float(val_is)
+            ls_ssim+=float(val_ssim)
+            ls_psnr+=float(val_psnr)
+
         fid_scores["FID-ignite/" + to + "_mean"] = ls / len(mod)
-    return fid_scores
+        ssim_scores["SSIM/" + to + "_mean"] = ls_ssim / len(mod)
+        psnr_scores["PSNR/" + to + "_mean"] = ls_psnr / len(mod)
+        IS_scores["IS/" + to + "_mean"] = ls_is / len(mod)
+        
+    return fid_scores, ssim_scores, psnr_scores, IS_scores
 
 
 def calculate_ignite_inception_score(args):
@@ -530,7 +564,8 @@ def calculate_metrics_segmentation(args, net_G):
             # ======= Directories =======
             ground_dir = os.path.normpath(args.eval_dir+'/Ground/dice')
             seg_dir = os.path.normpath(args.eval_dir+'/Segmentation/dice')
-            mae_dict["mae/" + mod[i]+str(idx)] = create_images_for_dice_or_s_score(args, net_G, i, syneval_loader, dice_=True, calculate_mae=True)
+            if not args.preloaded_data_eval:
+                mae_dict["mae/" + mod[i]+str(idx)] = create_images_for_dice_or_s_score(args, net_G, i, syneval_loader, dice_=True, calculate_mae=True)
             # ======= Volume Reading =======
             Vref = png_series_reader(ground_dir)
             Vseg = png_series_reader(seg_dir)
@@ -544,7 +579,8 @@ def calculate_metrics_segmentation(args, net_G):
             iou_dict["IoU/" + mod[i]+str(idx)] = iou
 
             # calculate s score
-            create_images_for_dice_or_s_score(args, net_G, i, syneval_loader, dice_=False)
+            if not args.preloaded_data_eval:
+                create_images_for_dice_or_s_score(args, net_G, i, syneval_loader, dice_=False)
             # ======= Volume Reading =======
             ground_dir = os.path.normpath(args.eval_dir+'/Ground/s_score')
             seg_dir = os.path.normpath(args.eval_dir+'/Segmentation/s_score')
@@ -558,7 +594,8 @@ def calculate_metrics_segmentation(args, net_G):
         dice_d["DICE/" + mod[i]] = sum([dice_dict["DICE/" + mod[i]+str(idx)] for idx in range(tot_rep)])/tot_rep
         s_score_d["S-SCORE/" + mod[i]] = sum([s_score_dict["S-SCORE/"+ mod[i]+str(idx)] for idx in range(tot_rep)])/tot_rep
         iou_d["IoU/" + mod[i]] = sum([iou_dict["IoU/" + mod[i]+str(idx)] for idx in range(tot_rep)])/tot_rep
-        mae_d["mae/" + mod[i]] = sum([mae_dict["mae/" + mod[i]+str(idx)] for idx in range(tot_rep)])/tot_rep
+        if not args.preloaded_data_eval:
+            mae_d["mae/" + mod[i]] = sum([mae_dict["mae/" + mod[i]+str(idx)] for idx in range(tot_rep)])/tot_rep
 
     return dice_d, s_score_d, iou_d, mae_d 
 
@@ -591,20 +628,31 @@ def my_metrics():
 
 
 def calculae_metrics_translation(args, net_G):
-    eval_dataset_imgr, eval_dataset_img = DefaultDataset(args.dataset_path+"/val/valimgr"), \
-                                         DefaultDataset(args.dataset_path+"/val/valimg")
-    generate_images_fid(net_G, args, 'test',
-                                      eval_dataset_imgr,
-                                      eval_dataset_img,
-                                      device
-                                      )
+    
+    if not args.preloaded_data_eval:
+        eval_dataset_imgr, eval_dataset_img = DefaultDataset(args.dataset_path+"/val/valimgr"), \
+                                            DefaultDataset(args.dataset_path+"/val/valimg")
+        generate_images_fid(net_G, args, 'test',
+                                        eval_dataset_imgr,
+                                        eval_dataset_img,
+                                        device
+                                        )
     #fid_stargan = calculate_fid_for_all_tasks(args, domains = ["valimg","valimgr"], step=args.epoch*10, mode="stargan")
-    fid_dict = calculate_pytorch_fid(args)
-    fid_ignite_dict = calculate_ignite_fid(args)
+    # fid_dict = calculate_pytorch_fid(args)
+    fid_ignite_dict, ssim_dict, psnr_ignite, IS_scores = calculate_ignite_fid(args)
+    print(fid_ignite_dict, ssim_dict, psnr_ignite, IS_scores)
+    raise Exception
     IS_ignite_dict = calculate_ignite_inception_score(args)
     
-    return {}, fid_dict, IS_ignite_dict, fid_ignite_dict 
+    return ssim_dict, fid_dict, IS_ignite_dict, fid_ignite_dict 
 
+
+def calculate_SSIM(true_path, eval_path):
+    from torchmetrics import StructuralSimilarityIndexMeasure
+    ssim = StructuralSimilarityIndexMeasure()
+    preds = jpg_series_reader(eval_path)
+    target = jpg_series_reader(true_path, mlen=preds.shape[0])
+    return ssim(torch.from_numpy(preds), torch.from_numpy(target))
 
 def calculate_all_metrics(args, net_G, device="cuda" if torch.cuda.is_available() else "cpu"):
     args.eval_dir=os.path.join(args.eval_dir, args.experiment_name)
