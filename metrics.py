@@ -638,13 +638,12 @@ def calculae_metrics_translation(args, net_G):
                                         device
                                         )
     #fid_stargan = calculate_fid_for_all_tasks(args, domains = ["valimg","valimgr"], step=args.epoch*10, mode="stargan")
-    # fid_dict = calculate_pytorch_fid(args)
-    fid_ignite_dict, ssim_dict, psnr_ignite, IS_scores = calculate_ignite_fid(args)
-    print(fid_ignite_dict, ssim_dict, psnr_ignite, IS_scores)
-    raise Exception
+    fid_dict = calculate_pytorch_fid(args)
+    fid_ignite_dict, ssim_dict, psnr_ignite, IS_ignite_dict = calculate_ignite_fid(args)
+
     IS_ignite_dict = calculate_ignite_inception_score(args)
     
-    return ssim_dict, fid_dict, IS_ignite_dict, fid_ignite_dict 
+    return ssim_dict, fid_dict, IS_ignite_dict, fid_ignite_dict ,psnr_ignite
 
 
 def calculate_SSIM(true_path, eval_path):
@@ -658,9 +657,9 @@ def calculate_all_metrics(args, net_G, device="cuda" if torch.cuda.is_available(
     args.eval_dir=os.path.join(args.eval_dir, args.experiment_name)
     os.makedirs(args.eval_dir, exist_ok=True)
 
-    fid_stargan, fid_dict, IS_ignite_dict, fid_ignite_dict = calculae_metrics_translation(args, net_G)
+    ssim_dict, fid_dict, IS_ignite_dict, fid_ignite_dict ,psnr_ignite = calculae_metrics_translation(args, net_G)
     dice_dict, s_score_dict, iou_dict, mae_dict = calculate_metrics_segmentation(args, net_G)
-    return fid_stargan, fid_dict, dice_dict, s_score_dict, iou_dict, IS_ignite_dict, fid_ignite_dict, mae_dict
+    return psnr_ignite, fid_dict, dice_dict, s_score_dict, iou_dict, IS_ignite_dict, fid_ignite_dict, mae_dict, ssim_dict
 
 
 
@@ -683,7 +682,7 @@ def evaluation(args):
     net_G.load_state_dict(torch.load(args.save_path+"/"+args.experiment_name+"/netG_use_"+ep+"_"+args.experiment_name+".pkl", map_location=device))
     with wandb.init(config=args, project="targan_drone") as run:
         wandb.run.name = args.experiment_name
-        fid_stargan, fid_dict, dice_dict, s_score_dict, iou_dict, IS_ignite_dict, fid_ignite_dict, mae_dict = calculate_all_metrics(args, net_G)
+        fid_stargan, fid_dict, dice_dict, s_score_dict, iou_dict, IS_ignite_dict, fid_ignite_dict, mae_dict, psnr_dict = calculate_all_metrics(args, net_G)
 
 
         wandb.log(dict(fid_stargan), step=ii + 1, commit=False)
@@ -693,6 +692,7 @@ def evaluation(args):
         wandb.log(dict(IS_ignite_dict), step=ii + 1, commit=False)
         wandb.log(dict(fid_ignite_dict), step=ii + 1, commit=False)
         wandb.log(dict(mae_dict), step=ii + 1, commit=False)
+        wandb.log(dict(psnr_dict), step=ii + 1, commit=False)
         wandb.log(iou_dict, commit=True)
 
 
