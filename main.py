@@ -59,7 +59,7 @@ if __name__ == '__main__':
     parser.add_argument("-preloaded_data_eval", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
     parser.add_argument("-pretrained_generator", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
     parser.add_argument("-color_images", type=str2bool, nargs='?', const=True, default=True, help="Activate nice mode.")
-    parser.add_argument("-lab", type=str2bool, nargs='?', const=True, default=True, help="Activate nice mode.")
+    parser.add_argument("-lab", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
 
     parser.add_argument('-wavelet_type', type=str,default=None) #real or quat
     parser.add_argument("-loss_ssim", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
