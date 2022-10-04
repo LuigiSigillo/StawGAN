@@ -115,7 +115,7 @@ def calculate_SSIM(true, pred):
         true = true.unsqueeze(1)
     if true.size(1) != 3:
         true = true.repeat(1, 3, 1, 1)
-    ssim.update([torch.from_numpy(pred), torch.from_numpy(true)])
+    ssim.update(pred, true)
     return ssim.compute()
 
 def calculate_ignite_fid(args):
@@ -143,7 +143,8 @@ def calculate_ignite_fid(args):
             pred = jpg_series_reader(eval_path)
             true = jpg_series_reader(p, pred.shape[0]) 
             x = fid_ignite(true, pred)
-            val_ssim = ssim(torch.from_numpy(pred).float(), torch.from_numpy(true).float())
+            #val_ssim = ssim(torch.from_numpy(pred).float(), torch.from_numpy(true).float())
+            val_ssim = calculate_SSIM(true/255,pred/255)
             val_psnr = psnr_ignite(true,pred)
             #pred = jpg_series_reader(eval_path)
             val_is = inception_score_ignite(pred)
@@ -151,12 +152,11 @@ def calculate_ignite_fid(args):
             fid_scores["FID-ignite/" + src + " to " + to] = float(x)
             ssim_scores["SSIM/" + src + " to " + to] = float(val_ssim)
             psnr_scores["PSNR/" + src + " to " + to] = float(val_psnr)
-
+    
             ls += float(x)
             ls_is += float(val_is)
             ls_ssim+=float(val_ssim)
             ls_psnr+=float(val_psnr)
-
         fid_scores["FID-ignite/" + to + "_mean"] = ls / len(mod)
         ssim_scores["SSIM/" + to + "_mean"] = ls_ssim / len(mod)
         psnr_scores["PSNR/" + to + "_mean"] = ls_psnr / len(mod)
@@ -614,32 +614,32 @@ def calculate_metrics_segmentation(args, net_G):
 
     return dice_d, s_score_d, iou_d, mae_d 
 
-#TODO
-def my_metrics():
-    fid_scores={}
-    #calculate FID entire translated image
-    p = "dataset/train/trainimgr"
-    eval_path = "results/color_pretrained_256/valimg_to_valimgr"
-    src = "img"
-    to = "imgr"
-    x = str(subprocess.check_output(f'python -m pytorch_fid "{p}" "{eval_path}" --device {device} --batch-size 50',
-                shell=True))
-    x = x.split(' ')[-1][:-3]
-    fid_scores["FID/" + src + " to " + to] = float(x)
+# #TODO
+# def my_metrics():
+#     fid_scores={}
+#     #calculate FID entire translated image
+#     p = "dataset/train/trainimgr"
+#     eval_path = "results/color_pretrained_256/valimg_to_valimgr"
+#     src = "img"
+#     to = "imgr"
+#     x = str(subprocess.check_output(f'python -m pytorch_fid "{p}" "{eval_path}" --device {device} --batch-size 50',
+#                 shell=True))
+#     x = x.split(' ')[-1][:-3]
+#     fid_scores["FID/" + src + " to " + to] = float(x)
     
-    # #calculate FID translated image without targets
-    # print()
-    #calculate FID translated targets
-    p = "results/color_pretrained_256/Ground/dice"
-    eval_path = "results/color_pretrained_256/Segmentation/dice"
-    src = "img"
-    to = "imgr"
-    x = str(subprocess.check_output(f'python -m pytorch_fid "{p}" "{eval_path}" --device {device} --batch-size 50',
-                shell=True))
-    x = x.split(' ')[-1][:-3]
-    fid_scores["FID_target/" + src + " to " + to] = float(x)
-    #see if FID(trans_targ) > FID(trans_without_t)
-    print(fid_scores)
+#     # #calculate FID translated image without targets
+#     # print()
+#     #calculate FID translated targets
+#     p = "results/color_pretrained_256/Ground/dice"
+#     eval_path = "results/color_pretrained_256/Segmentation/dice"
+#     src = "img"
+#     to = "imgr"
+#     x = str(subprocess.check_output(f'python -m pytorch_fid "{p}" "{eval_path}" --device {device} --batch-size 50',
+#                 shell=True))
+#     x = x.split(' ')[-1][:-3]
+#     fid_scores["FID_target/" + src + " to " + to] = float(x)
+#     #see if FID(trans_targ) > FID(trans_without_t)
+#     print(fid_scores)
 
 
 def calculae_metrics_translation(args, net_G):
@@ -655,8 +655,7 @@ def calculae_metrics_translation(args, net_G):
     #fid_stargan = calculate_fid_for_all_tasks(args, domains = ["valimg","valimgr"], step=args.epoch*10, mode="stargan")
     fid_dict = calculate_pytorch_fid(args)
     fid_ignite_dict, ssim_dict, psnr_ignite, IS_ignite_dict = calculate_ignite_fid(args)
-
-    IS_ignite_dict = calculate_ignite_inception_score(args)
+    #IS_ignite_dict = calculate_ignite_inception_score(args)
     
     return ssim_dict, fid_dict, IS_ignite_dict, fid_ignite_dict ,psnr_ignite
 
