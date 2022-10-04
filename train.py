@@ -32,15 +32,16 @@ def train(args):
             path=args.dataset_path, split='val', colored_data=args.color_images, paired_image=args.loss_ssim,lab=args.lab)
     else:
         idx = 0
+        tensors_path = "/tensors/tensors_paired"
         args.epoch = 10*args.epoch
         syn_dataset = DroneVeichleDataset(to_be_loaded=True)
-        syn_dataset.load_dataset(path=args.dataset_path+"/tensors/tensors_paired", split="train",
+        syn_dataset.load_dataset(path=args.dataset_path+tensors_path, split="train",
                                  idx=str(idx), img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim,lab=args.lab)
         syn_loader = DataLoader(
             syn_dataset, batch_size=args.batch_size, shuffle=True)
 
         syneval_dataset = DroneVeichleDataset(to_be_loaded=True)
-        syneval_dataset.load_dataset(path=args.dataset_path+"/tensors/tensors_paired", split="val", idx=str(
+        syneval_dataset.load_dataset(path=args.dataset_path+tensors_path, split="val", idx=str(
             idx), img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim,lab=args.lab)
 
     in_c = 1 if not args.color_images else 3
@@ -333,7 +334,7 @@ def train(args):
                 idx = idx+1 if (idx+1) < 18 else 0
                 print("loading dataset ", idx)
                 syn_dataset = DroneVeichleDataset(to_be_loaded=True)
-                syn_dataset.load_dataset("dataset/tensors", split="train", idx=str(
+                syn_dataset.load_dataset(args.dataset_path+tensors_path, split="train", idx=str(
                     idx), img_size=args.img_size, colored_data=args.color_images)
                 syn_loader = DataLoader(
                     syn_dataset, batch_size=args.batch_size, shuffle=True)
