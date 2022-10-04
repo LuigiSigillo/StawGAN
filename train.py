@@ -25,34 +25,34 @@ def train(args):
     # set_seed(args.random_seed)
     if not args.preloaded_data:
         syn_dataset = DroneVeichleDataset(
-            path=args.dataset_path, split='train', colored_data=args.color_images, paired_image=args.loss_ssim)
+            path=args.dataset_path, split='train', colored_data=args.color_images, paired_image=args.loss_ssim, lab=args.lab)
         syn_loader = DataLoader(
             syn_dataset, batch_size=args.batch_size, shuffle=True)
         syneval_dataset = DroneVeichleDataset(
-            path=args.dataset_path, split='val', colored_data=args.color_images, paired_image=args.loss_ssim)
+            path=args.dataset_path, split='val', colored_data=args.color_images, paired_image=args.loss_ssim,lab=args.lab)
     else:
         idx = 0
         args.epoch = 10*args.epoch
         syn_dataset = DroneVeichleDataset(to_be_loaded=True)
         syn_dataset.load_dataset(path=args.dataset_path+"/tensors/tensors_paired", split="train",
-                                 idx=str(idx), img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim)
+                                 idx=str(idx), img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim,lab=args.lab)
         syn_loader = DataLoader(
             syn_dataset, batch_size=args.batch_size, shuffle=True)
 
         syneval_dataset = DroneVeichleDataset(to_be_loaded=True)
         syneval_dataset.load_dataset(path=args.dataset_path+"/tensors/tensors_paired", split="val", idx=str(
-            idx), img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim)
+            idx), img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim,lab=args.lab)
 
     in_c = 1 if not args.color_images else 3
     in_c_gen = in_c+4 if args.wavelet_type != None else in_c
-
+    in_c_gen = 1 if args.lab else in_c_gen
     if args.qsn or args.phm:
         while (in_c_gen + args.c_dim) % 4 != 0: #3+2
             in_c_gen+=1
         while in_c % 4 !=0:
             in_c+=1
     netG = Generator(in_c=in_c_gen + args.c_dim, mid_c=args.G_conv, layers=2, s_layers=3, affine=True, last_ac=True,
-                     colored_input=args.color_images, wav=args.wavelet_type,real=args.real, qsn=args.qsn, phm=args.phm)
+                     colored_input=args.color_images, wav=args.wavelet_type,real=args.real, qsn=args.qsn, phm=args.phm, lab=args.lab)
     if args.pretrained_generator:
         netG.load_state_dict(torch.load(
             args.save_path+"/pretrained_gen_"+str(args.img_size)+".pt"))
@@ -262,22 +262,13 @@ def train(args):
                     all_losses["train/G/loss_shape_t"] = shape_loss_t.item()
                     all_losses["train/G/loss_cross"] = cross_loss.item()
                     wandb.log(all_losses, step=ii, commit=True)
-
                 ii = ii + 1
                 ###################################
 
             if (epoch + 1) % 1 == 0 and (epoch + 1) > 0:
                 # show syn images after every epoch
-                x_real, x_infrared, x_rgb, trg_orig, trg_infra_fake, trg_rgb_fake = plot_images(
-                    nets.netG_use, syneval_dataset, device, args.c_dim, args.wavelet_type)
-                # print(x.shape, y.shape, z.shape)
-                # plt.subplot(231)
-                # plt.imshow(  x.cpu().detach().permute(1, 2, 0).numpy()  )
-                # plt.subplot(232)
-                # plt.imshow(  y.cpu().detach().numpy()  )
-                # plt.subplot(233)
-                # plt.imshow(  z.cpu().detach().numpy()  )
-                # plt.savefig('final')
+                x_real, x_infrared, x_rgb, trg_orig, trg_infra_fake, trg_rgb_fake, pair = plot_images(
+                    nets.netG_use, syneval_dataset, device, args.c_dim, args.wavelet_type, args.lab)
                 wandb.log({"orig": wandb.Image(
                     x_real, caption="orig_" + str(epoch))}, commit=False)
                 wandb.log(
@@ -290,7 +281,8 @@ def train(args):
                           caption="ir_trg_" + str(epoch))}, commit=False)
                 wandb.log({"img_trg": wandb.Image(trg_rgb_fake,
                           caption="img_trg_" + str(epoch))}, commit=False)
-
+                wandb.log({"pair": wandb.Image(pair,
+                          caption="pair_" + str(epoch))}, commit=False)
                 # raise Exception
 
             if (epoch + 1) % args.save_every == 0:

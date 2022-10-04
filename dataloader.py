@@ -16,6 +16,7 @@ from tqdm import tqdm
 from torchvision import transforms
 from scipy.fftpack import hilbert as ht
 import pywt
+import kornia as K
 
 grayscale = tv.transforms.Grayscale(num_output_channels=1)
 def label_preprocess(data):
@@ -67,11 +68,12 @@ def raw_preprocess(data, get_s=False, path_pair=None, img_size=256, ):
     return out
 
 class DroneVeichleDataset(Dataset):
-    def __init__(self, path="dataset", split='train', modals=('img','imgr'),transforms=None, img_size=128, to_be_loaded=False, colored_data=True, paired_image=False):
+    def __init__(self, path="dataset", split='train', modals=('img','imgr'),transforms=None, img_size=128, to_be_loaded=False, colored_data=True, paired_image=False, lab = False):
         super(DroneVeichleDataset, self).__init__()
         
         if not to_be_loaded:
             self.paired_image = paired_image
+            self.lab = lab
             box = (100, 100, 740, 612)
             self.img_size = img_size
             fold = split + "/"
@@ -175,29 +177,41 @@ class DroneVeichleDataset(Dataset):
                 seg_mask = cv2.flip(seg_mask, 1)
                 paired_img = cv2.flip(paired_img, 1)
                 t_img = cv2.flip(t_img, 1)
-        #  scale to [-1,1]
-        img = (img - 0.5) / 0.5
-        t_img = (t_img - 0.5) / 0.5
 
+        if self.lab:
+            img = img/255
+            t_img = t_img/255
+            paired_img = paired_img/255
+        else:
+            # scale to [-1,1]
+            img = (img - 0.5) / 0.5
+            t_img = (t_img - 0.5) / 0.5
+            paired_img = (paired_img - 0.5) / 0.5
         if len(img.shape)>2:
             img, t_img, paired_img, seg_mask, class_label = self.get_item_rgb(img, t_img, paired_img, seg_mask, class_label)
-            
+            if self.lab:
+                img = K.color.rgb_to_lab(img)
+                t_img = K.color.rgb_to_lab(t_img)
+                paired_img = K.color.rgb_to_lab(paired_img)
         else:
             img, t_img, paired_img, seg_mask, class_label = self.get_item_grey(img, t_img, paired_img, seg_mask, class_label)
-
+            if self.lab:
+                img = K.color.rgb_to_lab(img)
+                t_img = K.color.rgb_to_lab(t_img)
+                paired_img = K.color.rgb_to_lab(paired_img)
         return img, t_img, paired_img, seg_mask, class_label
         
     def __len__(self):
         return len(self.raw_dataset)
 
-    def load_dataset(self, path="dataset", split='train', idx = "0", img_size=128, colored_data = True, paired_image=False):
+    def load_dataset(self, path="dataset", split='train', idx = "0", img_size=128, colored_data = True, paired_image=False, lab=False):
         self.label_dataset = torch.load(f"{path}/{idx}_{split}_label_dataset.pt")
         self.raw_dataset = torch.load(f"{path}/{idx}_{split}_raw_dataset.pt")
         self.img_size = img_size
         self.split=split
         self.colored_data = colored_data
         self.paired_image = paired_image
-
+        self.lab = lab
     def get_item_rgb(self, img, t_img, paired_img, seg_mask, class_label):
         if not self.colored_data:
             img = grayscale(torch.from_numpy(img).type(torch.FloatTensor).permute(2, 0, 1))
@@ -980,7 +994,7 @@ class KAISTDataset(Dataset):
 
             self.split = split
             self.colored_data = colored_data
-            print("DroneVeichle "+ split+ " data load success!")
+            print("KAIST "+ split+ " data load success!")
             print("total size:{}".format(len(self.raw_dataset)))
             
     def __getitem__(self, item):
@@ -1009,14 +1023,14 @@ class KAISTDataset(Dataset):
     def __len__(self):
         return len(self.raw_dataset)
 
-    def load_dataset(self, path="dataset", split='train', idx = "0", img_size=128, colored_data = True, paired_image=False):
+    def load_dataset(self, path="dataset", split='train', idx = "0", img_size=128, colored_data = True, paired_image=False, lab=False):
         self.label_dataset = torch.load(f"{path}/{idx}_{split}_label_dataset.pt")
         self.raw_dataset = torch.load(f"{path}/{idx}_{split}_raw_dataset.pt")
         self.img_size = img_size
         self.split=split
         self.colored_data = colored_data
         self.paired_image = paired_image
-
+        self.lab = lab
     def get_item_rgb(self, img, paired_img, class_label):
         if not self.colored_data:
             img = grayscale(torch.from_numpy(img).type(torch.FloatTensor).permute(2, 0, 1))
@@ -1025,6 +1039,8 @@ class KAISTDataset(Dataset):
             img = torch.from_numpy(img).type(torch.FloatTensor).permute(2, 0, 1)
             paired_img = torch.from_numpy(paired_img).type(torch.FloatTensor).permute(2, 0, 1) if len(paired_img.shape) ==3 else \
                             torch.from_numpy(paired_img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
+            img=K.color.rgb_to_lab(img)
+            paired_img = K.color.rgb_to_lab(paired_img)
         return img, \
             paired_img, \
             torch.from_numpy(class_label).type(torch.FloatTensor)

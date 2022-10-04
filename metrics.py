@@ -101,7 +101,22 @@ def inception_score_ignite(pred):
     valid_is = metric.compute()
     return valid_is
 
+def calculate_SSIM(true, pred):
+    from torchmetrics import StructuralSimilarityIndexMeasure
+    ssim = StructuralSimilarityIndexMeasure()
+    pred = torch.from_numpy(pred).float().to(device)
+    true = torch.from_numpy(true).float().to(device)
+    if len(pred.shape) != 4:
+        pred = pred.unsqueeze(1)
+    if pred.size(1) != 3:
+        pred = pred.repeat(1, 3, 1, 1)
 
+    if len(true.shape) != 4:
+        true = true.unsqueeze(1)
+    if true.size(1) != 3:
+        true = true.repeat(1, 3, 1, 1)
+    ssim.update([torch.from_numpy(pred), torch.from_numpy(true)])
+    return ssim.compute()
 
 def calculate_ignite_fid(args):
     from torchmetrics import StructuralSimilarityIndexMeasure
@@ -646,12 +661,7 @@ def calculae_metrics_translation(args, net_G):
     return ssim_dict, fid_dict, IS_ignite_dict, fid_ignite_dict ,psnr_ignite
 
 
-def calculate_SSIM(true_path, eval_path):
-    from torchmetrics import StructuralSimilarityIndexMeasure
-    ssim = StructuralSimilarityIndexMeasure()
-    preds = jpg_series_reader(eval_path)
-    target = jpg_series_reader(true_path, mlen=preds.shape[0])
-    return ssim(torch.from_numpy(preds), torch.from_numpy(target))
+
 
 def calculate_all_metrics(args, net_G, device="cuda" if torch.cuda.is_available() else "cpu"):
     args.eval_dir=os.path.join(args.eval_dir, args.experiment_name)

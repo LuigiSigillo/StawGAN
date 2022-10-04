@@ -8,6 +8,7 @@ from pathlib import Path
 import wandb
 import torchvision.utils as vutils
 import json
+import kornia as K
 
 
 
@@ -131,15 +132,16 @@ def moving_average(model, model_test, beta=0.999):
 
 
 
-def plot_images(netG_use, syneval_dataset, device, c_dim, wavelet_type):
+def plot_images(netG_use, syneval_dataset, device, c_dim, wavelet_type, lab):
     # fig = plt.figure(dpi=120)
     idx = random.randint(0,200)
     with torch.no_grad():
         img = syneval_dataset[idx][0]
+        pair_img = syneval_dataset[idx][2]
+
         img = img.unsqueeze(dim=0).to(device)
         try:
-            trg_segm = syneval_dataset[idx][3]
-
+            #trg_segm = syneval_dataset[idx][3]
             trg_orig = syneval_dataset[idx][1]
             trg_orig = trg_orig.unsqueeze(dim=0).to(device)
         except:
@@ -167,12 +169,22 @@ def plot_images(netG_use, syneval_dataset, device, c_dim, wavelet_type):
         # x_concat = []
         # x_concat = torch.cat(x_concat, dim=0)
         # plt.close(fig)
+    if lab:
+        return (K.color.lab_to_rgb(img.cpu())), \
+        (K.color.lab_to_rgb(pred_t1_img.cpu())), \
+        (K.color.lab_to_rgb(pred_t2_img.cpu())), \
+        K.color.lab_to_rgb(trg_orig.cpu()), \
+        K.color.lab_to_rgb(pred_t1_targ.cpu()), \
+        K.color.lab_to_rgb(pred_t2_targ.cpu()), \
+        (K.color.lab_to_rgb(pair_img.cpu()))
+
     return denorm(img).cpu(), \
             denorm(pred_t1_img).cpu(), \
             denorm(pred_t2_img).cpu(), \
             denorm(trg_orig).cpu(), \
             pred_t1_targ.cpu(), \
-            pred_t2_targ.cpu()
+            pred_t2_targ.cpu(), \
+            denorm(pair_img.cpu())
 
 
 def load_nets(args,nets,sepoch, optims):

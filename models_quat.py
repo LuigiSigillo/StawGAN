@@ -399,7 +399,7 @@ def create_wavelet_from_input_tensor(inputs, mods, wav_type ):
 class Generator(nn.Module):
     # the G of TarGAN
 
-    def __init__(self, in_c, mid_c, layers, s_layers, affine, last_ac=True, colored_input=True, wav=False, real=True, qsn=False, phm=False, phm_n=4, spectral=False, last_layer_gen_real=True):
+    def __init__(self, in_c, mid_c, layers, s_layers, affine, last_ac=True, colored_input=True, wav=False, real=True, qsn=False, phm=False, phm_n=4, spectral=False, last_layer_gen_real=True, lab=False):
         super(Generator, self).__init__()
         self.img_encoder = Encoder(in_c, mid_c, layers, affine, phm=phm, qsn=qsn, real=real)
         self.img_decoder = Decoder(mid_c * (2 ** layers), mid_c * (2 ** (layers - 1)), layers, affine,64)
@@ -415,40 +415,54 @@ class Generator(nn.Module):
             self.out_img = QuaternionConv(mid_c, 4, 1, stride=1, bias=bias)
             self.out_tumor = QuaternionConv(mid_c, 4, 1, stride=1, bias=bias)
         elif real or last_layer_gen_real:
-            self.out_img = nn.Conv2d(mid_c, 1 if not colored_input else 3, 1, bias=bias)
-            self.out_tumor = nn.Conv2d(mid_c, 1 if not colored_input else 3, 1, bias=bias)
+            self.out_img = nn.Conv2d(mid_c, 1 if not colored_input else 2 if lab else 3, 1, bias=bias)
+            self.out_tumor = nn.Conv2d(mid_c, 1 if not colored_input else 2 if lab else 3, 1, bias=bias)
 
         self.last_ac = last_ac
         self.real = real
         self.qsn = qsn
         self.in_c = in_c
         self.phm = phm
+        self.lab = lab
     # G(image,target_image,target_modality) --> (out_image,output_target_area_image)
 
     def forward(self, img, tumor=None, c=None, mode="train", wav_type=None):
         # print("input img shape",img.shape, c.shape) torch.Size([4, 1, 128, 128]) torch.Size([4, 3])
         c = c.view(c.size(0), c.size(1), 1, 1)
         c = c.repeat(1, 1, img.size(2), img.size(3))
+        img_orig = img
+        tumor_orig = tumor
         if wav_type != None:
             img = torch.cat([img, create_wavelet_from_input_tensor(img, c, wav_type)], dim=1)
         
+        if self.lab:
+            img = img[:,:1,:,:]
+        
         img = torch.cat([img, c], dim=1)
+        
         if self.qsn or self.phm:
             img = torch.cat((img, torch.zeros(img.shape[0], self.in_c-img.shape[1] ,img.shape[2],img.shape[3]).to(device)), dim=1).to(device)
+        
         x_1 = self.img_encoder(img)
         s_1 = self.share_net(x_1)
         res_img = self.out_img(self.img_decoder(s_1,x_1))
-
-        # print(res_img.shape)#torch.Size([4, 1, 128, 128])
+        if self.lab:
+            res_img = torch.cat([img_orig[:,:1,:,:], res_img], dim=1).to(device)
+        #print(res_img.shape)#torch.Size([4, 1, 128, 128])
         if self.last_ac:
             res_img = torch.tanh(res_img)
         if mode == "train":
+            if self.lab:
+                tumor = tumor[:,:1,:,:]
             tumor = torch.cat([tumor, c], dim=1)
             if self.qsn or self.phm:
                 tumor = torch.cat((tumor, torch.zeros(tumor.shape[0], self.in_c_targ-tumor.shape[1] ,tumor.shape[2],tumor.shape[3]).to(device)), dim=1).to(device)
             x_2 = self.target_encoder(tumor)
             s_2 = self.share_net(x_2)
             res_tumor = self.out_tumor(self.target_decoder(s_2, x_2))
+            if self.lab:
+                res_tumor = torch.cat([tumor_orig[:,:1,:,:], res_tumor], dim=1).to(device)
+
             if self.last_ac:
                 res_tumor = torch.tanh(res_tumor)
 
