@@ -5,8 +5,8 @@ from PIL import Image, ImageDraw, ImageColor
 import matplotlib.pyplot as plt
 import imageio
 from tqdm import tqdm
-
-color_palette = ["#fd7f6f", "#7eb0d5", "#b2e061", "#bd7ebe", "#ffb55a", "#ffee65", "#beb9db", "#fdcce5", "#8bd3c7"]
+#                (car red)   (feright_car verdechiaro)    (truck viola)      (bus verdescuro)     (van giallo)
+color_palette = [(255,0,0), (128,0,128),                    (0,192,0), (0,100,0), (200,200,0)]
 
 
 def poly_mask(annotations, bbox,*vertices, value=0):
@@ -35,13 +35,14 @@ def poly_mask(annotations, bbox,*vertices, value=0):
     draw = ImageDraw.Draw(img)
     # draw polygons
     for i,polygon in enumerate(vertices):
-        draw.polygon(polygon, outline=1, fill=ImageColor.getrgb(color_palette[annotations["seg"][i]]))
+        draw.polygon(polygon, outline=1, fill=color_palette[annotations["seg"][i]-1])
     
     for i,box in enumerate(bbox):
-        draw.rectangle(box, outline=1, fill=ImageColor.getrgb(color_palette[annotations["bbox"][i]]))
+        draw.rectangle(box, outline=1, fill=color_palette[annotations["bbox"][i]-1])
         # replace 0 with 'value'
     mask = np.array(img).astype('uint8')
     mask[np.where(mask == 0)] = value
+    
     return mask
 
 
@@ -73,7 +74,16 @@ def create_masks(split="train", ir=False):
                     bboxs.append(ann['bbox'])
                     cats["bbox"].append(ann['category_id'])
         # print("----end---")
+        for ids in range(6):
+            anns_temp = [anns[i] for i,seg in enumerate(cats["seg"]) if seg == ids]
+            bboxs_temp = [bboxs[i] for i,bbox in enumerate(cats["bbox"]) if bbox == ids]
+            if anns_temp != [] or bboxs_temp != []:
+                masks = poly_mask({"seg": [ids for i in range(len(anns_temp))], "bbox":[ids for i in range(len(bboxs_temp))]}, bboxs_temp, *anns_temp)
+                imageio.imwrite('dataset/'+split+'/'+split+'maskscol'+ir_string+'/'+image['file_name'].replace(".jpg","")+"_"+str(ids)+".jpg", masks)
+
         masks = poly_mask(cats, bboxs, *anns)
+        imageio.imwrite('dataset/'+split+'/'+split+'maskscol'+ir_string+'/'+image['file_name'], masks)
+
         # print(masks.shape)
         # plt.axis('off')
         # plt.gray()
@@ -82,9 +92,12 @@ def create_masks(split="train", ir=False):
             # print(len(bboxs)+len(anns))
             # plt.show()
         #plt.savefig('/home/jary/Documents/luigi/captainwho/droneveichle/dataset/train/trainmasks/'+image['file_name'], dpi=120)
-        imageio.imwrite('dataset/'+split+'/'+split+'maskscol'+ir_string+'/'+image['file_name'], masks)
-        dct[image['file_name'].replace(".jpg","")] = cats
+        # dct[image['file_name'].replace(".jpg","")] = cats
     # with open("dataset/train/train_categories.json", "w") as js:
     #     js.write(json.dumps(dct))
+
+create_masks(split="val", ir=True)
+create_masks(split="val")
+
 create_masks(split="train", ir=True)
 create_masks(split="train")
