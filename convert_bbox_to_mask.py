@@ -1,11 +1,15 @@
 import numpy as np
 import json
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageColor
 import matplotlib.pyplot as plt
 import imageio
 from tqdm import tqdm
-def poly_mask(shape, bbox,*vertices, value=0):
+#                (car red)   (feright_car verdechiaro)    (truck viola)      (bus verdescuro)     (van giallo)
+color_palette = [(255,0,0), (128,0,128),                    (0,192,0), (0,100,0), (200,200,0)]
+
+
+def poly_mask(annotations, bbox,*vertices, value=0):
     """
     Create a mask array filled with 1s inside the polygon and 0s outside.
     The polygon is a list of vertices defined as a sequence of (column, line) number, where the start values (0, 0) are in the
@@ -27,47 +31,73 @@ def poly_mask(shape, bbox,*vertices, value=0):
     
     #width, height = 640,512
     # create a binary image
-    img = Image.new(mode='L', size=(width, height), color=0)  # mode L = 8-bit pixels, black and white
+    img = Image.new(mode='RGB', size=(width, height), color=0)  # mode L = 8-bit pixels, black and white
     draw = ImageDraw.Draw(img)
     # draw polygons
-    for polygon in vertices:
-        draw.polygon(polygon, outline=1, fill=1)
+    for i,polygon in enumerate(vertices):
+        draw.polygon(polygon, outline=1, fill=color_palette[annotations["seg"][i]-1])
     
-    for box in bbox:
-        draw.rectangle(box, outline=1, fill=1)
+    for i,box in enumerate(bbox):
+        draw.rectangle(box, outline=1, fill=color_palette[annotations["bbox"][i]-1])
         # replace 0 with 'value'
-    mask = np.array(img).astype('float32')
+    mask = np.array(img).astype('uint8')
     mask[np.where(mask == 0)] = value
+    
     return mask
 
 
 
 #masks = poly_mask(None, bbox, *polygons)
 
-with open("/home/jary/Documents/luigi/captainwho/droneveichle/dataset/val/output_val_img.json") as js:
-    diz = json.load(js)
 
-#image = {'file_name': '11882.jpg', 'height': 712, 'width': 840, 'id': 11882}
-#annotation = {'iscrowd': 0, 'segmentation': [[692, 233, 729, 228, 732, 243, 695, 247]], 'category_id': 1, 'ignore': 0, 'bbox': [], 'image_id': 11882, 'id': 286792}, 
+def create_masks(split="train", ir=False):
+    ir_string = "r" if ir else ""
+    with open("dataset/"+split+"/output_"+split+"_img"+ir_string+".json") as js:
+        diz = json.load(js)
 
-for image in tqdm(diz['images'], total=len(diz['images'])):
-    anns,bboxs = [], []
-    for ann in diz['annotations']:
-        if ann['image_id'] == image['id']:
-            if ann['segmentation'] != []:
-                # print(ann)
-                anns.append(ann['segmentation'][0])
-            elif ann['bbox'] != []:
-                # print(ann)
-                bboxs.append(ann['bbox'])
-    # print("----end---")
-    masks = poly_mask(None, bboxs, *anns)
-    # print(masks.shape)
-    # plt.axis('off')
-    # plt.gray()
-    # plt.imshow(masks)
-    # if len(bboxs)+len(anns) >20:
-        # print(len(bboxs)+len(anns))
-        # plt.show()
-    #plt.savefig('/home/jary/Documents/luigi/captainwho/droneveichle/dataset/train/trainmasks/'+image['file_name'], dpi=120)
-    imageio.imwrite('/home/jary/Documents/luigi/captainwho/droneveichle/dataset/val/valmasks/'+image['file_name'], masks)
+    #image = {'file_name': '11882.jpg', 'height': 712, 'width': 840, 'id': 11882}
+    #annotation = {'iscrowd': 0, 'segmentation': [[692, 233, 729, 228, 732, 243, 695, 247]], 'category_id': 1, 'ignore': 0, 'bbox': [], 'image_id': 11882, 'id': 286792}, 
+    dct = {}
+    for image in tqdm(diz['images'], total=len(diz['images'])):
+        anns,bboxs = [], []
+        cats = {}
+        cats["seg"],cats["bbox"] = [],[]
+        
+        for ann in diz['annotations']:
+            if ann['image_id'] == image['id']:
+                if ann['segmentation'] != []:
+                    # print(ann)
+                    anns.append(ann['segmentation'][0])
+                    cats["seg"].append(ann['category_id'])
+                elif ann['bbox'] != []:
+                    # print(ann)
+                    bboxs.append(ann['bbox'])
+                    cats["bbox"].append(ann['category_id'])
+        # print("----end---")
+        for ids in range(6):
+            anns_temp = [anns[i] for i,seg in enumerate(cats["seg"]) if seg == ids]
+            bboxs_temp = [bboxs[i] for i,bbox in enumerate(cats["bbox"]) if bbox == ids]
+            if anns_temp != [] or bboxs_temp != []:
+                masks = poly_mask({"seg": [ids for i in range(len(anns_temp))], "bbox":[ids for i in range(len(bboxs_temp))]}, bboxs_temp, *anns_temp)
+                imageio.imwrite('dataset/'+split+'/'+split+'maskscol'+ir_string+'/'+image['file_name'].replace(".jpg","")+"_"+str(ids)+".jpg", masks)
+
+        masks = poly_mask(cats, bboxs, *anns)
+        imageio.imwrite('dataset/'+split+'/'+split+'maskscol'+ir_string+'/'+image['file_name'], masks)
+
+        # print(masks.shape)
+        # plt.axis('off')
+        # plt.gray()
+        # plt.imshow(masks)
+        # if len(bboxs)+len(anns) >20:
+            # print(len(bboxs)+len(anns))
+            # plt.show()
+        #plt.savefig('/home/jary/Documents/luigi/captainwho/droneveichle/dataset/train/trainmasks/'+image['file_name'], dpi=120)
+        # dct[image['file_name'].replace(".jpg","")] = cats
+    # with open("dataset/train/train_categories.json", "w") as js:
+    #     js.write(json.dumps(dct))
+
+create_masks(split="val", ir=True)
+create_masks(split="val")
+
+create_masks(split="train", ir=True)
+create_masks(split="train")
