@@ -89,7 +89,7 @@ def train(args):
     with wandb.init(config=args, project="targan_drone") as run:
         wandb.run.name = args.experiment_name
         for epoch in tqdm(range(args.sepoch, args.epoch), initial=args.sepoch, total=args.epoch):
-            for i, (x_real, t_img, shape_mask, mask, label_org) in tqdm(enumerate(syn_loader), total=len(syn_loader)):
+            for i, (x_real, t_img, paired_img, mask, label_org) in tqdm(enumerate(syn_loader), total=len(syn_loader)):
                 # 1. Preprocess input data
                 # Generate target domain labels randomly.
                 rand_idx = torch.randperm(label_org.size(0))
@@ -113,7 +113,7 @@ def train(args):
                 # Labels for computing classification loss.
                 d_false_org = d_false_org.to(device)
                 mask = mask.to(device)
-                # shape_mask = shape_mask.to(device)
+                # paired_img = paired_img.to(device)
 
                 t_img = t_img.to(device)
                 # plt.subplot(232)
@@ -202,15 +202,15 @@ def train(args):
                 g_loss_cls = F.binary_cross_entropy_with_logits(
                     out_cls, g_trg, reduction='sum') / out_cls.size(0)
                 # mask = mask.repeat(1, 3, 1, 1)
-                # shape_mask = shape_mask.repeat(1, 3, 1, 1)
-                # print(shape_mask.shape,nets.netH(x_fake).shape )
-                # shape_loss = F.mse_loss(nets.netH(x_fake), shape_mask.float())
+                # paired_img = paired_img.repeat(1, 3, 1, 1)
+                # print(paired_img.shape,nets.netH(x_fake).shape )
+                # shape_loss = F.mse_loss(nets.netH(x_fake), paired_img.float())
                 # Target-to-original domain.
                 x_reconst, t_reconst = nets.netG(
                     x_fake, t_fake, c_org, wav_type=args.wavelet_type)
                 g_loss_rec = torch.mean(torch.abs(x_real - x_reconst))
                 if args.loss_ssim:
-                    ssim_loss = ssim(x_fake, shape_mask.to(device))
+                    ssim_loss = ssim(x_fake, paired_img.to(device))
                 else:
                     ssim_loss = torch.tensor(0)
                 if index.shape[0] != 0:
