@@ -4,6 +4,9 @@ import kornia as K
 import torch
 import numpy as np
 import sys
+import cv2
+
+from dataloader import label_preprocess
 np.set_printoptions(threshold=sys.maxsize)
 
 import matplotlib.pyplot as plt
@@ -20,17 +23,41 @@ dict_palette = {"car":color_palette[0],
                 "van":color_palette[4]}
 
 threesolds = [(240,255), (113,145), (177,207), (85,115), (185,215)]
+split='val'
+i = 'dataset/val/valimg/01469.jpg'
+raw_classes, classes_temp=[],[]
+box = (100, 100, 740, 612)
+# image_maskr = Image.open('dataset/val/valmaskscolr/00021.jpg').convert("RGB")
+for idx in range(6):
+    a =  i.replace(split+"img",split+"maskscol")
+    try:
+        img_segm = Image.open(a.replace('.jpg', '_'+str(idx+1)+'.jpg')).convert('L')
+    except:
+        continue
+    img_segm = img_segm.crop(box)
 
-image_maskr = Image.open('dataset/val/valmaskscolr/00021.jpg').convert("RGB")
-np_img = np.asarray(image_maskr)
-for i,(min_t,max_t) in enumerate(threesolds):
-    new_a = np.zeros(np_img.shape)
-    print(np.count_nonzero( (min_t<np_img) & (np_img<max_t) ) )
-    new_a[(min_t<np_img) & (np_img<max_t)] = color_palette[i][0] if color_palette[i][0]!= 0 else color_palette[i][1]
-    # print(new_a)
+    # convert image to numpy array
+    img_segm = np.asarray(img_segm)
+    img_segm = cv2.resize(img_segm, (256, 256), interpolation=cv2.INTER_LINEAR)
 
-    test = Image.fromarray(new_a.astype("uint8"))
-    test.save('rr'+list(dict_palette.keys())[i]+".jpg")
+    test = label_preprocess(img_segm)
+    print(idx+1)
+    c = np.array(idx+1) #class
+    classes_temp.append((test,c))
+
+raw_classes.append(classes_temp)
+    # plt.imshow(test,cmap='gray')
+    # plt.show()
+
+
+# for i,(min_t,max_t) in enumerate(threesolds):
+#     new_a = np.zeros(np_img.shape)
+#     print(np.count_nonzero( (min_t<np_img) & (np_img<max_t) ) )
+#     new_a[(min_t<np_img) & (np_img<max_t)] = color_palette[i][0] if color_palette[i][0]!= 0 else color_palette[i][1]
+#     # print(new_a)
+
+#     test = Image.fromarray(new_a.astype("uint8"))
+#     test.save('rr'+list(dict_palette.keys())[i]+".jpg")
 
 
 # blackPxNum = np.count_nonzero([np.asarray(img)<=76]) #number of black pixels

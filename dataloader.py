@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from ast import expr_context
 from turtle import shape
+from matplotlib import testing
 from torch.utils.data import Dataset, DataLoader
 import os
 import numpy as np
@@ -19,6 +20,25 @@ import pywt
 import kornia as K
 
 grayscale = tv.transforms.Grayscale(num_output_channels=1)
+
+def segmented_classes_extract(split, i, img_size, box):
+    classes_temp = []
+    for idx in range(6):
+        a =  i.replace(split+"img",split+"maskscol")
+        try:
+            img_segm = Image.open(a.replace('.jpg', '_'+str(idx+1)+'.jpg')).convert('L')
+        except:
+            continue
+        img_segm = img_segm.crop(box)
+
+        # convert image to numpy array
+        img_segm = np.asarray(img_segm)
+        img_segm = cv2.resize(img_segm, (img_size, img_size), interpolation=cv2.INTER_LINEAR)
+
+        test = label_preprocess(img_segm)
+        c = np.array(idx+1) #class
+        classes_temp.append((test,c))
+    return classes_temp
 def label_preprocess(data):
     # # data = data.astype(dtype=int)
     # # new_seg = np.zeros(data.shape, data.dtype)
@@ -68,12 +88,23 @@ def raw_preprocess(data, get_s=False, path_pair=None, img_size=256, ):
     return out
 
 class DroneVeichleDataset(Dataset):
-    def __init__(self, path="dataset", split='train', modals=('img','imgr'),transforms=None, img_size=128, to_be_loaded=False, colored_data=True, paired_image=False, lab = False):
+    def __init__(self,lp, path="dataset", 
+                       split='train', 
+                       modals=('img','imgr'),
+                       transforms=None,
+                       img_size=128,
+                       to_be_loaded=False,
+                       colored_data=True,
+                       paired_image=False,
+                       lab = False,
+                       classes=False
+                       ):
         super(DroneVeichleDataset, self).__init__()
         
         if not to_be_loaded:
             self.paired_image = paired_image
             self.lab = lab
+            self.classes =classes
             box = (100, 100, 740, 612)
             self.img_size = img_size
             fold = split + "/"
@@ -82,7 +113,7 @@ class DroneVeichleDataset(Dataset):
             list_path = sorted([os.path.join(path1, x) for x in os.listdir(path1)]) + sorted([os.path.join(path2, x) for x in os.listdir(path2)])
             raw_path = [] #contains RGB image real
             # print(len(list_path), list_path[200])
-            for x in list_path:
+            for x in lp:
 
                 if split+"imgr" in x:
                     c = np.array(0) #infrared
@@ -95,8 +126,8 @@ class DroneVeichleDataset(Dataset):
                 raw_path.append([x,c])
                 
             #########
-            self.raw_dataset = []
-            self.label_dataset = []
+            self.raw_dataset, self.raw_classes = [], []
+            self.seg_mask_dataset = []
             #######
             self.transfroms = transforms
 
@@ -111,6 +142,9 @@ class DroneVeichleDataset(Dataset):
                     img, img_pair = raw_preprocess(img, get_s=True, path_pair=i.replace(split+"imgr",split+"img"), img_size = self.img_size)
 
                     self.raw_dataset.append([(img, img_pair), c])
+                    if classes:
+                        self.raw_classes.append(segmented_classes_extract(split, i, self.img_size, box))
+
                     #?????
                     a =  i.replace(split+"imgr",split+"masksr")
                     img_segm = Image.open(a)
@@ -120,7 +154,7 @@ class DroneVeichleDataset(Dataset):
                     img_segm = np.asarray(img_segm)
                     img_segm = cv2.resize(img_segm, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
 
-                    self.label_dataset.append(label_preprocess(img_segm))
+                    self.seg_mask_dataset.append(label_preprocess(img_segm))
                 elif c==1:
                         img = Image.open(i)
                         img = img.crop(box)
@@ -133,6 +167,9 @@ class DroneVeichleDataset(Dataset):
                         img, img_pair = raw_preprocess(img, get_s=True, path_pair=i.replace(split+"img",split+"imgr"), img_size = self.img_size)
 
                         self.raw_dataset.append([(img, img_pair), c])
+                        if classes:
+                            self.raw_classes.append(segmented_classes_extract(split, i, self.img_size, box))
+
                         #?????
                         a =  i.replace(split+"img",split+"masks")
                         img_segm = Image.open(a)
@@ -142,12 +179,15 @@ class DroneVeichleDataset(Dataset):
                         img_segm = np.asarray(img_segm)
                         img_segm = cv2.resize(img_segm, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
 
-                        self.label_dataset.append(label_preprocess(img_segm))
+                        self.seg_mask_dataset.append(label_preprocess(img_segm))
 
 
             self.split = split
             self.colored_data = colored_data
-            assert len(self.raw_dataset) == len(self.label_dataset)
+            assert len(self.raw_dataset) == len(self.seg_mask_dataset)
+            if classes:
+                assert len(self.raw_dataset) == len(self.raw_classes)
+
             print("DroneVeichle "+ split+ " data load success!")
             print("total size:{}".format(len(self.raw_dataset)))
             
@@ -155,21 +195,28 @@ class DroneVeichleDataset(Dataset):
         img, paired_img, class_label, seg_mask = self.raw_dataset[item][0][0],\
                                                  self.raw_dataset[item][0][1], \
                                                  self.raw_dataset[item][1], \
-                                                 self.label_dataset[item]
-
+                                                 self.seg_mask_dataset[item]
+        if self.classes:
+            seg_classes= self.raw_classes[item]
+        else:
+            t_imgs_classes = None
         if img.shape[0]!=self.img_size:
             img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
             seg_mask = cv2.resize(seg_mask, (self.img_size, self.img_size), interpolation=cv2.INTER_NEAREST)
             paired_img = cv2.resize(paired_img, (self.img_size, self.img_size), interpolation=cv2.INTER_NEAREST)
-        
+            if self.classes:
+                seg_classes = [cv2.resize(class_seg[0], (self.img_size, self.img_size), interpolation=cv2.INTER_NEAREST) for class_seg in seg_classes]
         #trhee channels for seg mask
         # print(seg_mask.shape, img.shape)
         if len(img.shape)>2:
             seg_mask_3 = np.repeat(seg_mask[...,None],3,axis=2)
             t_img = img * seg_mask_3
-            # print('normal', seg_mask_3.shape)
+            if self.classes:
+                t_imgs_classes = [img * np.repeat(class_seg[0][...,None],3,axis=2)  for class_seg in seg_classes]
         else:
             t_img = img * seg_mask
+            if self.classes:
+                t_imgs_classes = [img * class_seg[0]  for class_seg in seg_classes]
             # print(';infrared', class_label)
         if self.split == 'train':
             if random.random() > 0.5:
@@ -177,34 +224,48 @@ class DroneVeichleDataset(Dataset):
                 seg_mask = cv2.flip(seg_mask, 1)
                 paired_img = cv2.flip(paired_img, 1)
                 t_img = cv2.flip(t_img, 1)
-
+                if self.classes:
+                    seg_classes = [cv2.flip(class_seg[0],1) for class_seg in seg_classes]
+                    t_imgs_classes = [cv2.flip(t_imgs_class,1) for t_imgs_class in t_imgs_classes]
         if self.lab:
             img = img/255
             t_img = t_img/255
             paired_img = paired_img/255
+            if self.classes:
+                t_imgs_classes = [t_imgs_class/255 for t_imgs_class in t_imgs_classes]
         else:
             # scale to [-1,1]
             img = (img - 0.5) / 0.5
             t_img = (t_img - 0.5) / 0.5
             paired_img = (paired_img - 0.5) / 0.5
+            if self.classes:
+                t_imgs_classes = [(t_imgs_class- 0.5) / 0.5 for t_imgs_class in t_imgs_classes]
         if len(img.shape)>2:
-            img, t_img, paired_img, seg_mask, class_label = self.get_item_rgb(img, t_img, paired_img, seg_mask, class_label)
+            img, t_img, paired_img, seg_mask, class_label, t_imgs_classes = self.get_item_rgb(img, t_img, paired_img, seg_mask, class_label,t_imgs_classes if t_imgs_classes is not None else None)
             if self.lab:
                 img = K.color.rgb_to_lab(img)
                 t_img = K.color.rgb_to_lab(t_img)
                 paired_img = K.color.rgb_to_lab(paired_img)
+                if self.classes:
+                    t_imgs_classes = [K.color.rgb_to_lab(t_imgs_class) for t_imgs_class in t_imgs_classes]
+                
         else:
-            img, t_img, paired_img, seg_mask, class_label = self.get_item_grey(img, t_img, paired_img, seg_mask, class_label)
+            img, t_img, paired_img, seg_mask, class_label, t_imgs_classes = self.get_item_grey(img, t_img, paired_img, seg_mask, class_label, t_imgs_classes if t_imgs_classes is not None else None)
             if self.lab:
                 img = K.color.rgb_to_lab(img)
                 t_img = K.color.rgb_to_lab(t_img)
                 paired_img = K.color.rgb_to_lab(paired_img)
+                if self.classes:
+                    t_imgs_classes = [K.color.rgb_to_lab(t_imgs_class) for t_imgs_class in t_imgs_classes]
+        if self.classes:
+            return img, t_img, paired_img, seg_mask, class_label, t_imgs_classes, [torch.from_numpy(lab[1]) for lab in seg_classes]
+
         return img, t_img, paired_img, seg_mask, class_label
         
     def __len__(self):
         return len(self.raw_dataset)
 
-    def load_dataset(self, path="dataset", split='train', idx = "0", img_size=128, colored_data = True, paired_image=False, lab=False):
+    def load_dataset(self, path="dataset", split='train', idx = "0", img_size=128, colored_data = True, paired_image=False, lab=False, classes=False):
         self.label_dataset = torch.load(f"{path}/{idx}_{split}_label_dataset.pt")
         self.raw_dataset = torch.load(f"{path}/{idx}_{split}_raw_dataset.pt")
         self.img_size = img_size
@@ -212,27 +273,38 @@ class DroneVeichleDataset(Dataset):
         self.colored_data = colored_data
         self.paired_image = paired_image
         self.lab = lab
-    def get_item_rgb(self, img, t_img, paired_img, seg_mask, class_label):
+        self.classes = classes
+    def get_item_rgb(self, img, t_img, paired_img, seg_mask, class_label,t_imgs_classes):
         if not self.colored_data:
             img = grayscale(torch.from_numpy(img).type(torch.FloatTensor).permute(2, 0, 1))
             t_img = grayscale(torch.from_numpy(t_img).type(torch.FloatTensor).permute(2, 0, 1))
             paired_img = grayscale(torch.from_numpy(paired_img).type(torch.FloatTensor).permute(2, 0, 1))
+            if t_imgs_classes is not None:
+                t_imgs_classes = [grayscale(torch.from_numpy(t_img_class).type(torch.FloatTensor).permute(2, 0, 1)) for t_img_class in t_imgs_classes]
+
         else:
             img, t_img = torch.from_numpy(img).type(torch.FloatTensor).permute(2, 0, 1), \
                 torch.from_numpy(t_img).type(torch.FloatTensor).permute(2, 0, 1)
             paired_img = torch.from_numpy(paired_img).type(torch.FloatTensor).permute(2, 0, 1) if len(paired_img.shape) ==3 else \
                             torch.from_numpy(paired_img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
+            if t_imgs_classes is not None:
+                t_imgs_classes = [torch.from_numpy(t_img_class).type(torch.FloatTensor).permute(2, 0, 1) for t_img_class in t_imgs_classes]
+
         return img, \
             t_img , \
             paired_img, \
             torch.from_numpy(seg_mask).type(torch.LongTensor).unsqueeze(dim=0), \
-            torch.from_numpy(class_label).type(torch.FloatTensor)
+            torch.from_numpy(class_label).type(torch.FloatTensor), \
+            t_imgs_classes
 
-    def get_item_grey(self, img, t_img, paired_img, seg_mask, class_label):
+    def get_item_grey(self, img, t_img, paired_img, seg_mask, class_label, t_imgs_classes):
         if not self.colored_data:
             img = torch.from_numpy(img).type(torch.FloatTensor).unsqueeze(dim=0)
             t_img = torch.from_numpy(t_img).type(torch.FloatTensor).unsqueeze(dim=0)
             paired_img = torch.from_numpy(paired_img).type(torch.FloatTensor).unsqueeze(dim=0)
+            if t_imgs_classes is not None:
+                t_imgs_classes = [torch.from_numpy(t_img_class).type(torch.FloatTensor).unsqueeze(dim=0) for t_img_class in t_imgs_classes]
+
         else:
             img =  torch.from_numpy(img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
             t_img = torch.from_numpy(t_img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
@@ -242,12 +314,15 @@ class DroneVeichleDataset(Dataset):
                 # paired_img = torch.from_numpy(paired_img).type(torch.FloatTensor).permute(2, 0, 1)
             else:
                 paired_img = torch.from_numpy(paired_img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
+            if t_imgs_classes is not None:
+                t_imgs_classes = [torch.from_numpy(t_img_class).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1) for t_img_class in t_imgs_classes]
 
         return img, \
             t_img, \
             paired_img, \
             torch.from_numpy(seg_mask).type(torch.LongTensor).unsqueeze(dim=0), \
-            torch.from_numpy(class_label).type(torch.FloatTensor)
+            torch.from_numpy(class_label).type(torch.FloatTensor), \
+            t_imgs_classes
 
 
 
@@ -359,7 +434,7 @@ class DroneVeichleDatasetPreTraining(Dataset):
 
 
 
-def save_tensors_dataset(path="dataset", split="train", slices=19, max_length_slices=2000, img_size=256):
+def save_tensors_dataset(path="dataset", split="train", slices=19, max_length_slices=2000, img_size=256, my_folder = "dataset/tensors/tensors_paired"):
     modals=('img','imgr')
     fold = split + "/"
     path1 = os.path.join(path, fold+ split+modals[0])
@@ -369,18 +444,19 @@ def save_tensors_dataset(path="dataset", split="train", slices=19, max_length_sl
     for idx in tqdm(range(slices)):
         random.shuffle(list_path)
         l_o = list_path[:max_length_slices]
-        dt = DroneVeichleDataset(l_o,split=split, img_size=img_size)
-        my_folder = "dataset/tensors/tensors_paired"
+        dt = DroneVeichleDataset(l_o,split=split, img_size=img_size, classes=True)
         idx = str(idx)
 
         torch.save(dt.raw_dataset, f"{my_folder}/{idx}_{split}_raw_dataset.pt")
-        torch.save(dt.label_dataset, f"{my_folder}/{idx}_{split}_label_dataset.pt")
+        torch.save(dt.seg_mask_dataset, f"{my_folder}/{idx}_{split}_seg_mask_dataset.pt")
+        torch.save(dt.raw_classes, f"{my_folder}/{idx}_{split}_raw_classes_dataset.pt")
+
         list_path = list(set(list_path)-set(l_o))
         print(len(list_path), " remaining samples")
 
 
-# save_tensors_dataset(path="dataset", split="train", slices=19, max_length_slices=2000, img_size=256)
-# save_tensors_dataset(path="dataset", split="val", slices=2, max_length_slices=2000, img_size=256)
+# save_tensors_dataset(path="dataset", split="train", slices=19, max_length_slices=2000, img_size=256,  my_folder = "dataset/tensors/tensors_classes")
+# save_tensors_dataset(path="dataset", split="val", slices=2, max_length_slices=2000, img_size=256,  my_folder = "dataset/tensors/tensors_classes")
 
 class DefaultDataset(Dataset):
     def __init__(self, root, img_size=256, transform=None, kaist=False):
@@ -947,7 +1023,7 @@ class KAISTDataset(Dataset):
                             
             #########
             self.raw_dataset = []
-            self.label_dataset = []
+            self.seg_mask_dataset = []
             #######
             self.transfroms = transforms
 
@@ -969,7 +1045,7 @@ class KAISTDataset(Dataset):
                     # img_segm = np.asarray(img_segm)
                     # img_segm = cv2.resize(img_segm, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
 
-                    # self.label_dataset.append(self.label_preprocess(img_segm))
+                    # self.seg_mask_dataset.append(self.label_preprocess(img_segm))
                 elif c==1:
                         img = Image.open(root+i)
 
@@ -989,7 +1065,7 @@ class KAISTDataset(Dataset):
                         # img_segm = np.asarray(img_segm)
                         # img_segm = cv2.resize(img_segm, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
 
-                        # self.label_dataset.append(self.label_preprocess(img_segm))
+                        # self.seg_mask_dataset.append(self.label_preprocess(img_segm))
 
 
             self.split = split
@@ -1109,26 +1185,33 @@ class KAISTDataset(Dataset):
         return out
 from utils import denorm
 def testing_dataset():
-    dt = KAISTDataset(split="val", img_size=128)
+    dt = DroneVeichleDataset(split="val", img_size=128, classes=True)
     # dt = ChaosDataset_Syn_new(path="../QWT/TarGAN/datasets/chaos2019")
     syn_loader = DataLoader(dt, shuffle=True)
-    # for epoch, (x_real, t_img, paired_img, mask, label_org) in enumerate(syn_loader):
-    for epoch, (x_real, paired_img, label_org) in enumerate(syn_loader):
+    for epoch, (x_real, t_img, paired_img, mask, label_org, classes_seg, lab_seg) in enumerate(syn_loader):
+    # for epoch, (x_real, paired_img, label_org) in enumerate(syn_loader):
 
         plt.axis('off')
         plt.subplot(241)
         plt.imshow(denorm(x_real).squeeze().cpu().numpy().transpose(1,2,0))
         plt.title('real image')
-        #plt.subplot(242)
-        # plt.imshow(denorm(t_img).squeeze().cpu().numpy().transpose(1,2,0))
-        # plt.title('target image')
+        plt.subplot(242)
+        plt.imshow(denorm(t_img).squeeze().cpu().numpy().transpose(1,2,0))
+        plt.title('target image')
         plt.subplot(243)
         plt.imshow(paired_img.squeeze().cpu().numpy().transpose(1,2,0),)
         plt.title('paired image')
-        # plt.subplot(244)
-        # plt.imshow(denorm(mask).squeeze().cpu().numpy(),cmap=plt.get_cmap('gray'))
-        # plt.title('target mask')
-        plt.savefig('test'+str(epoch))
-        # plt.show()
+        plt.subplot(244)
+        plt.imshow(denorm(mask).squeeze().cpu().numpy(),cmap=plt.get_cmap('gray'))
+        plt.title('target mask')
+        # plt.savefig('test'+str(epoch))
+        plt.show()
         if epoch >0:
             break
+        print(lab_seg)
+        for classes, l_seg in zip(classes_seg,lab_seg):
+            print(classes.shape)
+            plt.imshow(denorm(classes).squeeze().cpu().numpy().transpose(1,2,0))
+            plt.title('target image'+str(l_seg[0]))
+            plt.show()
+testing_dataset()
