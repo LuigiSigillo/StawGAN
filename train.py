@@ -25,11 +25,11 @@ def train(args):
     # set_seed(args.random_seed)
     if not args.preloaded_data:
         syn_dataset = DroneVeichleDataset(
-            path=args.dataset_path, split='train', colored_data=args.color_images, paired_image=args.loss_ssim, lab=args.lab)
+            path=args.dataset_path, split='train', img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim, lab=args.lab, classes=args.classes)
         syn_loader = DataLoader(
-            syn_dataset, batch_size=args.batch_size, shuffle=True)
+            syn_dataset, batch_size=args.batch_size, shuffle=True,)
         syneval_dataset = DroneVeichleDataset(
-            path=args.dataset_path, split='val', colored_data=args.color_images, paired_image=args.loss_ssim,lab=args.lab)
+            path=args.dataset_path, split='val', img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim,lab=args.lab, classes=args.classes)
     else:
         idx = 0
         tensors_path = "/tensors/tensors_paired"
@@ -89,7 +89,7 @@ def train(args):
     with wandb.init(config=args, project="targan_drone") as run:
         wandb.run.name = args.experiment_name
         for epoch in tqdm(range(args.sepoch, args.epoch), initial=args.sepoch, total=args.epoch):
-            for i, (x_real, t_img, paired_img, mask, label_org) in tqdm(enumerate(syn_loader), total=len(syn_loader)):
+            for i, (x_real, t_img, paired_img, mask, label_org, t_imgs_classes, classes) in tqdm(enumerate(syn_loader), total=len(syn_loader)):
                 # 1. Preprocess input data
                 # Generate target domain labels randomly.
                 rand_idx = torch.randperm(label_org.size(0))
@@ -100,6 +100,9 @@ def train(args):
                     label_org + args.c_dim, args.c_dim * 2)
                 d_org = label2onehot(label_org, args.c_dim * 2)
                 g_trg = label2onehot(label_trg, args.c_dim * 2)
+
+
+
                 # plt.subplot(231)
                 # plt.imshow(  [x_real[2].cpu().detach().permute(1, 2, 0).numpy()  )
                 x_real = x_real.to(device)  # Input images.
@@ -303,7 +306,7 @@ def train(args):
                 save_state_net(nets.netH, args, epoch + 1,
                                optims.h_optimizier, args.experiment_name)
             if (epoch+1) % args.eval_every == 0:
-                fid_stargan, fid_dict, dice_dict, s_score_dict, iou_dict, IS_ignite_dict, fid_ignite_dict, mae_dict = calculate_all_metrics(args, nets.net_G)
+                fid_stargan, fid_dict, dice_dict, s_score_dict, iou_dict, IS_ignite_dict, fid_ignite_dict, mae_dict = calculate_all_metrics(args, nets.netG)
                 wandb.log(dict(fid_stargan), step=ii + 1, commit=False)
                 wandb.log(dict(fid_dict), step=ii + 1, commit=False)
                 wandb.log(dict(IS_ignite_dict), step=ii + 1, commit=False)
@@ -337,3 +340,7 @@ def train(args):
                 syn_dataset.load_dataset(path=args.dataset_path+tensors_path, split="train", idx=str(idx), 
                     img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim,lab=args.lab)
                 syn_loader = DataLoader(syn_dataset, batch_size=args.batch_size, shuffle=True)
+
+
+
+

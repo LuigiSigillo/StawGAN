@@ -143,11 +143,13 @@ def calculate_ignite_fid(args):
             pred = jpg_series_reader(eval_path)
             true = jpg_series_reader(p, pred.shape[0]) 
             x = fid_ignite(true, pred)
+            val_is = inception_score_ignite(pred)
             #val_ssim = ssim(torch.from_numpy(pred).float(), torch.from_numpy(true).float())
+            pred = jpg_series_reader(eval_path)
+            true = jpg_series_reader(eval_root +"/"+to+"_to_val"+src+"/ground_truth", pred.shape[0]) 
             val_ssim = calculate_SSIM(true/255,pred/255)
             val_psnr = psnr_ignite(true,pred)
             #pred = jpg_series_reader(eval_path)
-            val_is = inception_score_ignite(pred)
             IS_scores["IS-ignite/" + src + " to " +to ] = float(val_is)
             fid_scores["FID-ignite/" + src + " to " + to] = float(x)
             ssim_scores["SSIM/" + src + " to " + to] = float(val_ssim)
@@ -677,16 +679,17 @@ def evaluation(args):
     in_c = 1 if not args.color_images else 3
     in_c_gen = in_c+4 if args.wavelet_type != None else in_c
     if not args.real:
-        from models_quat import Generator
         while (in_c_gen + args.c_dim) % 4 != 0: #3+2
             in_c_gen+=1
-        net_G = Generator(in_c=in_c_gen + args.c_dim, mid_c=args.G_conv, layers=2, s_layers=3, affine=True, last_ac=True,
-                     colored_input=args.color_images, wav=args.wavelet_type,real=args.real, qsn=args.qsn, phm=args.phm).to(device)
-    else:
-        from models import Generator
-        net_G = Generator(in_c=in_c_gen + args.c_dim, mid_c=args.G_conv, layers=2, s_layers=3, affine=True, last_ac=True,
-                            colored_input=args.color_images, wav=args.wavelet_type).to(device)
-    
+    # try:
+    #     from models_quat import Generator
+    #     net_G = Generator(in_c=in_c_gen + args.c_dim, mid_c=args.G_conv, layers=2, s_layers=3, affine=True, last_ac=True,
+    #                         colored_input=args.color_images, wav=args.wavelet_type,real=args.real, qsn=args.qsn, phm=args.phm).to(device)
+    # except:    
+    from models import Generator
+    print("excpetion")
+    net_G = Generator(in_c=in_c_gen + args.c_dim, mid_c=args.G_conv, layers=2, s_layers=3, affine=True, last_ac=True,
+                        colored_input=args.color_images, wav=args.wavelet_type).to(device)
     ep = str(args.epoch) if not args.preloaded_data else str(args.epoch*10)
     net_G.load_state_dict(torch.load(args.save_path+"/"+args.experiment_name+"/netG_use_"+ep+"_"+args.experiment_name+".pkl", map_location=device))
     with wandb.init(config=args, project="targan_drone") as run:

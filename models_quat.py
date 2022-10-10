@@ -3,85 +3,13 @@ import torch
 from torch import nn
 
 from HLayers.QSN2 import Qspectral_norm
-from HLayers.quaternion_layers import QuaternionConv, QuaternionTransposeConv
+from HLayers.quaternion_layers import QuaternionConv, QuaternionTransposeConv, QuaternionInstanceNorm2d
 from HLayers.PHC import PHMConv, PHMTransposeConv
 
 import torch.nn.functional as F
-from dataloader import wavelet_wrapper
+from wavelet import wavelet_wrapper
 from torch.nn.utils.parametrizations import spectral_norm
 device = "cuda" if torch.cuda.is_available() else "cpu"
-
-class QuaternionInstanceNorm2d(nn.Module):
-    r"""Applies a 2D Quaternion Instance Normalization to the incoming data.
-        """
-
-    def __init__(self, num_features, eps=1e-5, momentum=0.1, affine=False, track_running_stats=False):
-        super(QuaternionInstanceNorm2d, self).__init__()
-        self.num_features = num_features // 4
-        self.gamma_init = 1.
-        self.affine = affine
-        self.gamma = nn.Parameter(torch.full([1, self.num_features, 1, 1], self.gamma_init))
-        self.beta = nn.Parameter(torch.zeros(1, self.num_features * 4, 1, 1), requires_grad=self.affine)
-        self.eps = torch.tensor(1e-5)
-        ####
-        self.momentum = momentum
-        self.track_running_stats = track_running_stats
-
-    def reset_parameters(self):
-        self.gamma = nn.Parameter(torch.full([1, self.num_features, 1, 1], self.gamma_init))
-        self.beta = nn.Parameter(torch.zeros(1, self.num_features * 4, 1, 1), requires_grad=self.affine)
-
-    def forward(self, input):
-        # print(self.training)
-        quat_components = torch.chunk(input, 4, dim=1)
-
-        r, i, j, k = quat_components[0], quat_components[1], quat_components[2], quat_components[3]
-
-        mu_r = torch.mean(r, axis=(2, 3), keepdims=True)
-        mu_i = torch.mean(i, axis=(2, 3), keepdims=True)
-        mu_j = torch.mean(j, axis=(2, 3), keepdims=True)
-        mu_k = torch.mean(k, axis=(2, 3), keepdims=True)
-
-        mu = torch.stack([torch.mean(mu_r),
-                          torch.mean(mu_i),
-                          torch.mean(mu_j),
-                          torch.mean(mu_k)], dim=0)
-        # mu = torch.cat([mu_r,mu_i, mu_j, mu_k], dim=1)
-
-        delta_r, delta_i, delta_j, delta_k = r - mu_r, i - mu_i, j - mu_j, k - mu_k
-
-        quat_variance = torch.mean(delta_r ** 2 + delta_i ** 2 + delta_j ** 2 + delta_k ** 2)
-        var = quat_variance
-
-        denominator = torch.sqrt(quat_variance + self.eps)
-
-        # Normalize
-        r_normalized = delta_r / denominator
-        i_normalized = delta_i / denominator
-        j_normalized = delta_j / denominator
-        k_normalized = delta_k / denominator
-
-        beta_components = torch.chunk(self.beta, 4, dim=1)
-
-        # Multiply gamma (stretch scale) and add beta (shift scale)
-        new_r = (self.gamma * r_normalized) + beta_components[0]
-        new_i = (self.gamma * i_normalized) + beta_components[1]
-        new_j = (self.gamma * j_normalized) + beta_components[2]
-        new_k = (self.gamma * k_normalized) + beta_components[3]
-
-        new_input = torch.cat((new_r, new_i, new_j, new_k), dim=1)
-        # if self.track_running_stats:
-        #     self.moving_mean.copy_(moving_average_update(self.moving_mean.data, mu.data, self.momentum))
-        #     self.moving_var.copy_(moving_average_update(self.moving_var.data, var.data, self.momentum))
-
-        return new_input
-
-    def __repr__(self):
-        return self.__class__.__name__ + '(' \
-               + 'num_features=' + str(self.num_features) \
-               + ', gamma=' + str(self.gamma.shape) \
-               + ', beta=' + str(self.beta.shape) \
-               + ', eps=' + str(self.eps.shape) + ')'
 
 
 # def moving_average_update(statistic, curr_value, momentum):
@@ -353,9 +281,7 @@ class Discriminator(nn.Module):
             if spectral:
                 self.conv1 = spectral_norm(nn.Conv2d(curr_dim, 1, kernel_size=3, stride=1, padding=1, bias=False))
                 self.conv2 = spectral_norm(nn.Conv2d(curr_dim, c_dim, kernel_size=kernel_size, bias=False))
-            else:
-                self.conv1 = nn.Conv2d(curr_dim, 1, kernel_size=3, stride=1, padding=1, bias=False)
-                self.conv2 = nn.Conv2d(curr_dim, c_dim, kernel_size=kernel_size, bias=False)
+
         self.real = real
         self.last_layer_gen_real = last_layer_gen_real
         self.qsn = qsn
@@ -405,8 +331,10 @@ class Generator(nn.Module):
         self.img_decoder = Decoder(mid_c * (2 ** layers), mid_c * (2 ** (layers - 1)), layers, affine,64)
         self.in_c_targ = in_c-4 if wav is not None else in_c
         self.target_encoder = Encoder(self.in_c_targ, mid_c, layers, affine, phm=phm, qsn=qsn, real=real)
-        self.target_decoder = Decoder(mid_c * (2 ** layers), mid_c * (2 ** (layers - 1)), layers, affine,64) 
+        #self.target_decoder = Decoder(mid_c * (2 ** layers), mid_c * (2 ** (layers - 1)), layers, affine,64) 
         self.share_net = ShareNet(mid_c * (2 ** (layers - 1)), mid_c * (2 ** (layers - 1 + s_layers)), s_layers, affine,256)
+        self.target_style_decoder = DecoderStyle(in_c=mid_c * (2 ** layers), style_dim=64, img_size=256) 
+        self.img_style_decoder = DecoderStyle(in_c=mid_c * (2 ** layers), style_dim=64, img_size=256) 
 
         if phm and not last_layer_gen_real:
             self.out_img = PHMConv(phm_n, mid_c, 4, 1, bias=bias)
@@ -426,7 +354,7 @@ class Generator(nn.Module):
         self.lab = lab
     # G(image,target_image,target_modality) --> (out_image,output_target_area_image)
 
-    def forward(self, img, tumor=None, c=None, mode="train", wav_type=None):
+    def forward(self, img, tumor=None, c=None, mode="train", wav_type=None, style=None):
         # print("input img shape",img.shape, c.shape) torch.Size([4, 1, 128, 128]) torch.Size([4, 3])
         c = c.view(c.size(0), c.size(1), 1, 1)
         c = c.repeat(1, 1, img.size(2), img.size(3))
@@ -445,7 +373,8 @@ class Generator(nn.Module):
         
         x_1 = self.img_encoder(img)
         s_1 = self.share_net(x_1)
-        res_img = self.out_img(self.img_decoder(s_1,x_1))
+        #dec_out = self.img_decoder(s_1,x_1)
+        res_img = self.out_img(self.img_style_decoder(s_1,x_1, style))
         if self.lab:
             res_img = torch.cat([img_orig[:,:1,:,:], res_img], dim=1).to(device)
         #print(res_img.shape)#torch.Size([4, 1, 128, 128])
@@ -459,7 +388,7 @@ class Generator(nn.Module):
                 tumor = torch.cat((tumor, torch.zeros(tumor.shape[0], self.in_c_targ-tumor.shape[1] ,tumor.shape[2],tumor.shape[3]).to(device)), dim=1).to(device)
             x_2 = self.target_encoder(tumor)
             s_2 = self.share_net(x_2)
-            res_tumor = self.out_tumor(self.target_decoder(s_2, x_2))
+            res_tumor = self.out_tumor(self.target_style_decoder(s_2, x_2, style))
             if self.lab:
                 res_tumor = torch.cat([tumor_orig[:,:1,:,:], res_tumor], dim=1).to(device)
 
@@ -568,3 +497,206 @@ class ShapeUNet(nn.Module):
 
 
         return torch.sigmoid(d1)
+
+
+####################################################################
+import math
+
+class ResBlk(nn.Module):
+    def __init__(self, dim_in, dim_out, actv=nn.LeakyReLU(0.2),
+                 normalize=False, downsample=False):
+        super().__init__()
+        self.actv = actv
+        self.normalize = normalize
+        self.downsample = downsample
+        self.learned_sc = dim_in != dim_out
+        self._build_weights(dim_in, dim_out)
+
+    def _build_weights(self, dim_in, dim_out):
+        self.conv1 = nn.Conv2d(dim_in, dim_in, 3, 1, 1)
+        self.conv2 = nn.Conv2d(dim_in, dim_out, 3, 1, 1)
+        if self.normalize:
+            self.norm1 = nn.InstanceNorm2d(dim_in, affine=True)
+            self.norm2 = nn.InstanceNorm2d(dim_in, affine=True)
+        if self.learned_sc:
+            self.conv1x1 = nn.Conv2d(dim_in, dim_out, 1, 1, 0, bias=False)
+
+    def _shortcut(self, x):
+        if self.learned_sc:
+            x = self.conv1x1(x)
+        if self.downsample:
+            x = F.avg_pool2d(x, 2)
+        return x
+
+    def _residual(self, x):
+        if self.normalize:
+            x = self.norm1(x)
+        x = self.actv(x)
+        x = self.conv1(x)
+        if self.downsample:
+            x = F.avg_pool2d(x, 2)
+        if self.normalize:
+            x = self.norm2(x)
+        x = self.actv(x)
+        x = self.conv2(x)
+        return x
+
+    def forward(self, x):
+        x = self._shortcut(x) + self._residual(x)
+        return x / math.sqrt(2)  # unit variance
+
+
+class StyleEncoder(nn.Module):
+    def __init__(self, img_size=256, style_dim=64, num_domains=6, max_conv_dim=512):
+        super().__init__()
+        dim_in = 2**14 // img_size
+        blocks = []
+        blocks += [nn.Conv2d(3, dim_in, 3, 1, 1)]
+
+        repeat_num = int(np.log2(img_size)) - 2
+        for _ in range(repeat_num):
+            dim_out = min(dim_in*2, max_conv_dim)
+            blocks += [ResBlk(dim_in, dim_out, downsample=True)]
+            dim_in = dim_out
+
+        blocks += [nn.LeakyReLU(0.2)]
+        blocks += [nn.Conv2d(dim_out, dim_out, 4, 1, 0)]
+        blocks += [nn.LeakyReLU(0.2)]
+        self.shared = nn.Sequential(*blocks)
+
+        self.unshared = nn.ModuleList()
+        for _ in range(num_domains):
+            self.unshared += [nn.Linear(dim_out, style_dim)]
+
+    def forward(self, x, y):
+        h = self.shared(x)
+        h = h.view(h.size(0), -1)
+        out = []
+        for layer in self.unshared:
+            out += [layer(h)]
+        out = torch.stack(out, dim=1)  # (batch, num_domains, style_dim)
+        idx = torch.LongTensor(range(y.size(0))).to(y.device)
+        s = out[idx, y]  # (batch, style_dim)
+        return s
+
+
+
+class AdaIN(nn.Module):
+    def __init__(self, style_dim, num_features):
+        super().__init__()
+        self.norm = nn.InstanceNorm2d(num_features, affine=False)
+        self.fc = nn.Linear(style_dim, num_features*2)
+
+    def forward(self, x, s):
+        h = self.fc(s)
+        h = h.view(h.size(0), h.size(1), 1, 1)
+        gamma, beta = torch.chunk(h, chunks=2, dim=1)
+        return (1 + gamma) * self.norm(x) + beta
+
+
+class AdainResBlk(nn.Module):
+    def __init__(self, dim_in, dim_out, style_dim=64, w_hpf=0,
+                 actv=nn.LeakyReLU(0.2), upsample=False):
+        super().__init__()
+        self.w_hpf = w_hpf
+        self.actv = actv
+        self.upsample = upsample
+        self.learned_sc = dim_in != dim_out
+        self._build_weights(dim_in, dim_out, style_dim)
+
+    def _build_weights(self, dim_in, dim_out, style_dim=64):
+        self.conv1 = nn.Conv2d(dim_in, dim_out, 3, 1, 1)
+        self.conv2 = nn.Conv2d(dim_out, dim_out, 3, 1, 1)
+        self.norm1 = AdaIN(style_dim, dim_in)
+        self.norm2 = AdaIN(style_dim, dim_out)
+        if self.learned_sc:
+            self.conv1x1 = nn.Conv2d(dim_in, dim_out, 1, 1, 0, bias=False)
+
+    def _shortcut(self, x):
+        if self.upsample:
+            x = F.interpolate(x, scale_factor=2, mode='nearest')
+        if self.learned_sc:
+            x = self.conv1x1(x)
+        return x
+
+    def _residual(self, x, s):
+        x = self.norm1(x, s)
+        x = self.actv(x)
+        if self.upsample:
+            x = F.interpolate(x, scale_factor=2, mode='nearest')
+        x = self.conv1(x)
+        x = self.norm2(x, s)
+        x = self.actv(x)
+        x = self.conv2(x)
+        return x
+
+    def forward(self, x, s):
+        out = self._residual(x, s)
+        if self.w_hpf == 0:
+            out = (out + self._shortcut(x)) / math.sqrt(2)
+        return out 
+
+
+
+class DecoderStyle(nn.Module):
+    def __init__(self, in_c, style_dim, img_size, w_hpf=0, max_conv_dim=512):
+        super(DecoderStyle, self).__init__()
+        self.decode = nn.ModuleList()
+        
+        # down/up-sampling blocks
+        repeat_num = int(np.log2(img_size)) - 4
+        if w_hpf > 0:
+            repeat_num += 1
+        for _ in range(repeat_num):
+            dim_out = min(in_c*2, max_conv_dim)
+            self.decode.insert(0, AdainResBlk(dim_out, in_c, style_dim, w_hpf=w_hpf, upsample=True))  # stack-like
+            in_c = dim_out
+
+        # bottleneck blocks
+        for _ in range(2):
+            self.decode.insert(0, AdainResBlk(dim_out, dim_out, style_dim, w_hpf=w_hpf))
+    
+    
+    def forward(self, share_input, encoder_input, style):
+        # encoder_input.reverse()
+        # x = 0
+        # for i, layer in enumerate(self.decoder):
+        #     x = torch.cat([share_input, encoder_input[i][0]], dim=1)
+        #     # print(x.shape,share_input.shape, encoder_input[i][0].shape)
+        #     x = layer(x)
+        #     share_input = x
+        # return x
+        encoder_input.reverse()
+        for i,block in enumerate(self.decode):
+            x = torch.cat([share_input, encoder_input[i][0]], dim=1)
+            x = block(x, style)
+            share_input = x
+        return x
+
+
+
+class DiscriminatorStyle(nn.Module):
+    def __init__(self, img_size=256, num_domains=6, max_conv_dim=512):
+        super().__init__()
+        dim_in = 2**14 // img_size
+        blocks = []
+        blocks += [nn.Conv2d(3, dim_in, 3, 1, 1)]
+
+        repeat_num = int(np.log2(img_size)) - 2
+        for _ in range(repeat_num):
+            dim_out = min(dim_in*2, max_conv_dim)
+            blocks += [ResBlk(dim_in, dim_out, downsample=True)]
+            dim_in = dim_out
+
+        blocks += [nn.LeakyReLU(0.2)]
+        blocks += [nn.Conv2d(dim_out, dim_out, 4, 1, 0)]
+        blocks += [nn.LeakyReLU(0.2)]
+        blocks += [nn.Conv2d(dim_out, num_domains, 1, 1, 0)]
+        self.main = nn.Sequential(*blocks)
+
+    def forward(self, x, y):
+        out = self.main(x)
+        out = out.view(out.size(0), -1)  # (batch, num_domains)
+        idx = torch.LongTensor(range(y.size(0))).to(y.device)
+        out = out[idx, y]  # (batch)
+        return out

@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import numpy as np
 bias = False
 from torchvision import models
-from dataloader import wavelet_wrapper
+from wavelet import wavelet_wrapper
 
 device = "cuda" if torch.cuda.is_available() else "cpu" if torch.cuda.is_available() else "cpu"
 

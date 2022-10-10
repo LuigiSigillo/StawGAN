@@ -15,8 +15,79 @@ import torch.nn                 as nn
 from   torch.nn.parameter       import Parameter
 from   torch.nn                 import Module
 from   .quaternion_ops          import *
-import math
-import sys
+
+class QuaternionInstanceNorm2d(nn.Module):
+    r"""Applies a 2D Quaternion Instance Normalization to the incoming data.
+        """
+
+    def __init__(self, num_features, eps=1e-5, momentum=0.1, affine=False, track_running_stats=False):
+        super(QuaternionInstanceNorm2d, self).__init__()
+        self.num_features = num_features // 4
+        self.gamma_init = 1.
+        self.affine = affine
+        self.gamma = nn.Parameter(torch.full([1, self.num_features, 1, 1], self.gamma_init))
+        self.beta = nn.Parameter(torch.zeros(1, self.num_features * 4, 1, 1), requires_grad=self.affine)
+        self.eps = torch.tensor(1e-5)
+        ####
+        self.momentum = momentum
+        self.track_running_stats = track_running_stats
+
+    def reset_parameters(self):
+        self.gamma = nn.Parameter(torch.full([1, self.num_features, 1, 1], self.gamma_init))
+        self.beta = nn.Parameter(torch.zeros(1, self.num_features * 4, 1, 1), requires_grad=self.affine)
+
+    def forward(self, input):
+        # print(self.training)
+        quat_components = torch.chunk(input, 4, dim=1)
+
+        r, i, j, k = quat_components[0], quat_components[1], quat_components[2], quat_components[3]
+
+        mu_r = torch.mean(r, axis=(2, 3), keepdims=True)
+        mu_i = torch.mean(i, axis=(2, 3), keepdims=True)
+        mu_j = torch.mean(j, axis=(2, 3), keepdims=True)
+        mu_k = torch.mean(k, axis=(2, 3), keepdims=True)
+
+        mu = torch.stack([torch.mean(mu_r),
+                          torch.mean(mu_i),
+                          torch.mean(mu_j),
+                          torch.mean(mu_k)], dim=0)
+        # mu = torch.cat([mu_r,mu_i, mu_j, mu_k], dim=1)
+
+        delta_r, delta_i, delta_j, delta_k = r - mu_r, i - mu_i, j - mu_j, k - mu_k
+
+        quat_variance = torch.mean(delta_r ** 2 + delta_i ** 2 + delta_j ** 2 + delta_k ** 2)
+        var = quat_variance
+
+        denominator = torch.sqrt(quat_variance + self.eps)
+
+        # Normalize
+        r_normalized = delta_r / denominator
+        i_normalized = delta_i / denominator
+        j_normalized = delta_j / denominator
+        k_normalized = delta_k / denominator
+
+        beta_components = torch.chunk(self.beta, 4, dim=1)
+
+        # Multiply gamma (stretch scale) and add beta (shift scale)
+        new_r = (self.gamma * r_normalized) + beta_components[0]
+        new_i = (self.gamma * i_normalized) + beta_components[1]
+        new_j = (self.gamma * j_normalized) + beta_components[2]
+        new_k = (self.gamma * k_normalized) + beta_components[3]
+
+        new_input = torch.cat((new_r, new_i, new_j, new_k), dim=1)
+        # if self.track_running_stats:
+        #     self.moving_mean.copy_(moving_average_update(self.moving_mean.data, mu.data, self.momentum))
+        #     self.moving_var.copy_(moving_average_update(self.moving_var.data, var.data, self.momentum))
+
+        return new_input
+
+    def __repr__(self):
+        return self.__class__.__name__ + '(' \
+               + 'num_features=' + str(self.num_features) \
+               + ', gamma=' + str(self.gamma.shape) \
+               + ', beta=' + str(self.beta.shape) \
+               + ', eps=' + str(self.eps.shape) + ')'
+
 
 class QuaternionTransposeConv(Module):
     r"""Applies a Quaternion Transposed Convolution (or Deconvolution) to the incoming data.
