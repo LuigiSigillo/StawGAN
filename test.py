@@ -168,6 +168,18 @@ def label2onehot(labels, dim):
     for i in range(batch_size):
         out[i, labels[i].long()] = 1
     return out
+
+def onehot2label(onehotvec):
+    """Convert label indices to one-hot vectors."""
+    batch_size = onehotvec.size(0)
+    out = torch.zeros(batch_size, 1)
+    for i in range(batch_size):
+        item = (onehotvec[i] == 1).nonzero(as_tuple=True)[0].item()
+        out[i] = item
+        print(item)
+         
+    return out
+
 import random
 def compute_g_loss(nets, args, x_real, t_img, c_trg, y_trg, x_segm=None):
     
@@ -181,8 +193,9 @@ def compute_g_loss(nets, args, x_real, t_img, c_trg, y_trg, x_segm=None):
     while torch.equal(yy_trg,torch.tensor([1., 0., 0., 0., 0.])):
         idx = random.randint(0,5)
         yy_trg = y_trg[idx]
-    
-    s_trg = netSE(x_segm[:,idx], yy_trg.unsqueeze(0).long())
+    yy_trg = onehot2label(yy_trg.unsqueeze(0)).squeeze(0)
+    yy_trg = yy_trg.long()
+    s_trg = netSE(x_segm[:,idx], yy_trg)
     
     #genero l immagine fake passandogli la segmentate/reale di un truck con lo stylecode della car
     x_fake, t_fake = netG(x_real, t_img, c_trg, style = s_trg, wav_type=None)
@@ -210,7 +223,7 @@ def compute_g_loss(nets, args, x_real, t_img, c_trg, y_trg, x_segm=None):
     # x_rec = netG(x_fake, style=s_org, )
     # loss_cyc = torch.mean(torch.abs(x_rec - x_real))
 
-    loss = loss_adv + args.lambda_sty * loss_sty #+ args.lambda_cyc * loss_cyc
+    loss = loss_adv +loss_sty  #c*args.lambda_sty  #+ args.lambda_cyc * loss_cyc
     return loss, [ loss_adv.item(),
                     loss_sty.item(),]
                     #loss_cyc.item()]
@@ -247,10 +260,10 @@ g_classes_trg = label2onehot(classes_trg, 5 * 2)
 
 # # train the generator
 g_loss, g_losses_latent = compute_g_loss(None, None, 
-                                    x_real=torch.randn(1,3,256,256), t_img=torch.randn(1,3,256,256), y_trg=c_classes_org, c_trg=c_trg, x_segm=torch.randn(1,6,3,256,256) )
+                                    x_real=torch.randn(1,3,256,256), t_img=torch.randn(1,3,256,256), y_trg=c_classes_trg, c_trg=c_trg, x_segm=torch.randn(1,6,3,256,256) )
 # self._reset_grad()
 # g_loss.backward()
 # optims.generator.step()
 # optims.style_encoder.step()
 
-
+print()
