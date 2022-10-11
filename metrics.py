@@ -104,8 +104,8 @@ def inception_score_ignite(pred):
 def calculate_SSIM(true, pred):
     from torchmetrics import StructuralSimilarityIndexMeasure
     ssim = StructuralSimilarityIndexMeasure()
-    pred = torch.from_numpy(pred).float().to(device)
-    true = torch.from_numpy(true).float().to(device)
+    pred = torch.from_numpy(pred).float()
+    true = torch.from_numpy(true).float()
     if len(pred.shape) != 4:
         pred = pred.unsqueeze(1)
     if pred.size(1) != 3:
