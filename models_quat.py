@@ -325,17 +325,21 @@ def create_wavelet_from_input_tensor(inputs, mods, wav_type ):
 class Generator(nn.Module):
     # the G of TarGAN
 
-    def __init__(self, in_c, mid_c, layers, s_layers, affine, last_ac=True, colored_input=True, wav=False, real=True, qsn=False, phm=False, phm_n=4, spectral=False, last_layer_gen_real=True, lab=False):
+    def __init__(self, in_c, mid_c, layers, s_layers, affine, last_ac=True, colored_input=True, wav=False, real=True, qsn=False, phm=False, phm_n=4, classes=False,spectral=False, last_layer_gen_real=True, lab=False):
         super(Generator, self).__init__()
         self.img_encoder = Encoder(in_c, mid_c, layers, affine, phm=phm, qsn=qsn, real=real)
-        self.img_decoder = Decoder(mid_c * (2 ** layers), mid_c * (2 ** (layers - 1)), layers, affine,64)
         self.in_c_targ = in_c-4 if wav is not None else in_c
         self.target_encoder = Encoder(self.in_c_targ, mid_c, layers, affine, phm=phm, qsn=qsn, real=real)
-        #self.target_decoder = Decoder(mid_c * (2 ** layers), mid_c * (2 ** (layers - 1)), layers, affine,64) 
-        self.share_net = ShareNet(mid_c * (2 ** (layers - 1)), mid_c * (2 ** (layers - 1 + s_layers)), s_layers, affine,256)
-        self.target_style_decoder = DecoderStyle(in_c=mid_c * (2 ** layers), style_dim=64, img_size=256) 
-        self.img_style_decoder = DecoderStyle(in_c=mid_c * (2 ** layers), style_dim=64, img_size=256) 
+        if not classes:
+            self.target_decoder = Decoder(mid_c * (2 ** layers), mid_c * (2 ** (layers - 1)), layers, affine,64) 
+            self.img_decoder = Decoder(in_c = mid_c * (2 ** layers),mid_c = mid_c * (2 ** (layers - 1)), layers = layers, affine = affine,r=64)
+        else:
+            self.target_style_decoder = DecoderStyle(in_c=mid_c * (2 ** layers), style_dim=64, img_size=256) 
+            self.img_style_decoder = DecoderStyle(in_c=mid_c * (2 ** layers), style_dim=64, img_size=256) 
+            
 
+        self.share_net = ShareNet(mid_c * (2 ** (layers - 1)), mid_c * (2 ** (layers - 1 + s_layers)), s_layers, affine,256)
+        
         if phm and not last_layer_gen_real:
             self.out_img = PHMConv(phm_n, mid_c, 4, 1, bias=bias)
             self.out_tumor = PHMConv(phm_n, mid_c, 4, 1, bias=bias)
@@ -345,13 +349,16 @@ class Generator(nn.Module):
         elif real or last_layer_gen_real:
             self.out_img = nn.Conv2d(mid_c, 1 if not colored_input else 2 if lab else 3, 1, bias=bias)
             self.out_tumor = nn.Conv2d(mid_c, 1 if not colored_input else 2 if lab else 3, 1, bias=bias)
-
+            if classes:
+                self.out_img = nn.Conv2d(384, 1 if not colored_input else 2 if lab else 3, 1, bias=bias)
+                self.out_tumor = nn.Conv2d(384, 1 if not colored_input else 2 if lab else 3, 1, bias=bias)
         self.last_ac = last_ac
         self.real = real
         self.qsn = qsn
         self.in_c = in_c
         self.phm = phm
         self.lab = lab
+        self.classes = classes
     # G(image,target_image,target_modality) --> (out_image,output_target_area_image)
 
     def forward(self, img, tumor=None, c=None, mode="train", wav_type=None, style=None):
@@ -373,8 +380,12 @@ class Generator(nn.Module):
         
         x_1 = self.img_encoder(img)
         s_1 = self.share_net(x_1)
-        #dec_out = self.img_decoder(s_1,x_1)
-        res_img = self.out_img(self.img_style_decoder(s_1,x_1, style))
+        if self.classes:
+            dec_out = self.img_style_decoder(s_1,x_1, style)
+        else:
+            dec_out = self.img_decoder(s_1,x_1)
+ 
+        res_img = self.out_img(dec_out)
         if self.lab:
             res_img = torch.cat([img_orig[:,:1,:,:], res_img], dim=1).to(device)
         #print(res_img.shape)#torch.Size([4, 1, 128, 128])
@@ -388,7 +399,11 @@ class Generator(nn.Module):
                 tumor = torch.cat((tumor, torch.zeros(tumor.shape[0], self.in_c_targ-tumor.shape[1] ,tumor.shape[2],tumor.shape[3]).to(device)), dim=1).to(device)
             x_2 = self.target_encoder(tumor)
             s_2 = self.share_net(x_2)
-            res_tumor = self.out_tumor(self.target_style_decoder(s_2, x_2, style))
+            if self.classes:
+                dec_out = self.target_style_decoder(s_2, x_2, style)
+            else:
+                dec_out = self.target_decoder(s_2,x_2)
+            res_tumor = self.out_tumor(dec_out)
             if self.lab:
                 res_tumor = torch.cat([tumor_orig[:,:1,:,:], res_tumor], dim=1).to(device)
 
@@ -580,7 +595,6 @@ class StyleEncoder(nn.Module):
         return s
 
 
-
 class AdaIN(nn.Module):
     def __init__(self, style_dim, num_features):
         super().__init__()
@@ -639,22 +653,26 @@ class AdainResBlk(nn.Module):
 
 
 class DecoderStyle(nn.Module):
-    def __init__(self, in_c, style_dim, img_size, w_hpf=0, max_conv_dim=512):
+    def __init__(self, in_c, style_dim, img_size, w_hpf=0, max_conv_dim=384):
         super(DecoderStyle, self).__init__()
         self.decode = nn.ModuleList()
-        
         # down/up-sampling blocks
         repeat_num = int(np.log2(img_size)) - 4
         if w_hpf > 0:
             repeat_num += 1
-        for _ in range(repeat_num):
-            dim_out = min(in_c*2, max_conv_dim)
-            self.decode.insert(0, AdainResBlk(dim_out, in_c, style_dim, w_hpf=w_hpf, upsample=True))  # stack-like
-            in_c = dim_out
-
+        
+        # for _ in range(repeat_num):
+        #     dim_out = min(in_c*2, max_conv_dim)
+        #     self.decode.insert(0, AdainResBlk(dim_out, in_c, style_dim, w_hpf=w_hpf, upsample=True))  # stack-like
+        #     in_c = dim_out
+           
         # bottleneck blocks
-        for _ in range(2):
-            self.decode.insert(0, AdainResBlk(dim_out, dim_out, style_dim, w_hpf=w_hpf))
+        # for _ in range(2):
+        self.decode.insert(0, AdainResBlk(384, 384, style_dim, w_hpf=w_hpf, upsample=True))  # stack-like
+
+        self.decode.insert(0, AdainResBlk(320, 320, style_dim, w_hpf=w_hpf))
+        self.decode.insert(0, AdainResBlk(256, 256, style_dim, w_hpf=w_hpf))
+        self.decode.insert(0, AdainResBlk(192, 192, style_dim, w_hpf=w_hpf))
     
     
     def forward(self, share_input, encoder_input, style):
@@ -668,7 +686,12 @@ class DecoderStyle(nn.Module):
         # return x
         encoder_input.reverse()
         for i,block in enumerate(self.decode):
-            x = torch.cat([share_input, encoder_input[i][0]], dim=1)
+            if i<4:
+                enc_in = encoder_input[0][0]
+            else:
+                enc_in = encoder_input[1][0]
+
+            x = torch.cat([share_input, enc_in], dim=1)
             x = block(x, style)
             share_input = x
         return x

@@ -1,5 +1,5 @@
 from metrics import calculate_all_metrics
-from models_quat import Generator, Discriminator, ShapeUNet
+from models_quat import DiscriminatorStyle, Generator, Discriminator, ShapeUNet, StyleEncoder
 from dataloader import *
 from torch.utils.data import DataLoader
 from utils import *
@@ -62,6 +62,8 @@ def train(args):
                         "netD_i": Discriminator(c_dim=args.c_dim * 2, image_size=args.img_size, colored_input=args.color_images,real=args.real, qsn=args.qsn, phm=args.phm),
                         "netD_t": Discriminator(c_dim=args.c_dim * 2, image_size=args.img_size, colored_input=args.color_images,real=args.real, qsn=args.qsn, phm=args.phm),
                         "netH":  ShapeUNet(img_ch=in_c, output_ch=1, mid=args.h_conv,real=args.real, qsn=args.qsn, phm=args.phm),
+                        "netSE": StyleEncoder() if args.classes else None,
+                        "netD_style" : DiscriminatorStyle() if args.classes else None
                         })
     nets.netG.to(device)
     nets.netD_i.to(device)
@@ -71,7 +73,10 @@ def train(args):
     optims = munch.Munch({"g_optimizier": torch.optim.Adam(nets.netG.parameters(), lr=glr, betas=(args.betas[0], args.betas[1])),
                           "di_optimizier": torch.optim.Adam(nets.netD_i.parameters(), lr=dlr, betas=(args.betas[0], args.betas[1])),
                           "dt_optimizier": torch.optim.Adam(nets.netD_t.parameters(), lr=dlr, betas=(args.betas[0], args.betas[1])),
-                          "h_optimizier": torch.optim.Adam(nets.netH.parameters(), lr=glr, betas=(args.betas[0], args.betas[1]))})
+                          "h_optimizier": torch.optim.Adam(nets.netH.parameters(), lr=glr, betas=(args.betas[0], args.betas[1])),
+                          "se_optimizier": torch.optim.Adam(nets.netSE.parameters(), lr=glr, betas=(args.betas[0], args.betas[1])) if args.classes else None,
+                          "ds_optimizier": torch.optim.Adam(nets.netD_style.parameters(), lr=dlr, betas=(args.betas[0], args.betas[1])) if args.classes else None
+                          }) 
 
     if args.sepoch > 0:
         load_nets(args, nets, args.sepoch, optims)
@@ -89,7 +94,7 @@ def train(args):
     with wandb.init(config=args, project="targan_drone") as run:
         wandb.run.name = args.experiment_name
         for epoch in tqdm(range(args.sepoch, args.epoch), initial=args.sepoch, total=args.epoch):
-            for i, (x_real, t_img, paired_img, mask, label_org, t_imgs_classes, classes) in tqdm(enumerate(syn_loader), total=len(syn_loader)):
+            for i, (x_real, t_img, paired_img, mask, label_org, t_imgs_classes, classes_org) in tqdm(enumerate(syn_loader), total=len(syn_loader)):
                 # 1. Preprocess input data
                 # Generate target domain labels randomly.
                 rand_idx = torch.randperm(label_org.size(0))
@@ -212,6 +217,15 @@ def train(args):
                 x_reconst, t_reconst = nets.netG(
                     x_fake, t_fake, c_org, wav_type=args.wavelet_type)
                 g_loss_rec = torch.mean(torch.abs(x_real - x_reconst))
+                if args.classes:
+                    rand_idx_classes = torch.randperm(classes_org.size(0))
+                    classes_trg = classes_org[rand_idx_classes]
+                    c_classes_trg = label2onehot(classes_trg, 5)
+                    g_loss_adva, g_l_sty = compute_g_loss(nets, args, x_real=x_real, t_img=t_img, y_trg=c_classes_trg, c_trg=c_trg, x_segm=t_imgs_classes)
+                    g_style_loss = g_loss_adva + g_l_sty
+                    optims.se_optimizer.zero_grad()
+                    optims.ds_optimizer.zero_grad()
+                    
                 if args.loss_ssim:
                     ssim_loss = ssim(x_fake, paired_img.to(device))
                 else:
@@ -240,7 +254,8 @@ def train(args):
                     g_loss_cls * args.w_g_c  +ssim_loss*args.w_ssim # + shape_loss* args.w_shape
                 gt_loss = gt_loss + args.w_cycle * g_loss_rec_t + \
                     shape_loss_t * args.w_shape + cross_loss * args.w_g_cross
-                g_loss = gi_loss + gt_loss
+                style_comp = 0 if not args.classes else g_style_loss *args.w_shape
+                g_loss = gi_loss + gt_loss + style_comp
 
                 optims.g_optimizier.zero_grad()
                 optims.di_optimizier.zero_grad()
@@ -249,7 +264,9 @@ def train(args):
                 g_loss.backward()
                 optims.g_optimizier.step()
                 optims.h_optimizier.step()
-
+                if args.classes:
+                    optims.se_optimizer.step()
+                    optims.ds_optimizer.step()
                 moving_average(nets.netG, nets.netG_use, beta=0.999)
 
                 if (i + 0) % args.logs_every == 0:
@@ -265,6 +282,8 @@ def train(args):
                     all_losses["train/G/loss_ssim"] = ssim_loss.item()
                     all_losses["train/G/loss_shape_t"] = shape_loss_t.item()
                     all_losses["train/G/loss_cross"] = cross_loss.item()
+                    all_losses["train/G/loss_style"] = style_comp
+
                     wandb.log(all_losses, step=ii, commit=True)
                 ii = ii + 1
                 ###################################
@@ -344,3 +363,64 @@ def train(args):
 
 
 
+def onehot2label(onehotvec):
+    """Convert label indices to one-hot vectors."""
+    batch_size = onehotvec.size(0)
+    out = torch.zeros(batch_size, 1)
+    for i in range(batch_size):
+        item = (onehotvec[i] == 1).nonzero(as_tuple=True)[0].item()
+        out[i] = item
+        print(item)
+         
+    return out
+
+import random
+def compute_g_loss(nets, args, x_real, t_img, c_trg, y_trg, x_segm=None):
+    
+    # estrapolo lo style code dalla immagine segmentata/quella intera?
+    # gli passo anche la lebel target (quindi se é car car?)
+
+    yy_trg = torch.tensor([1., 0., 0., 0., 0.])
+    while torch.equal(yy_trg,torch.tensor([1., 0., 0., 0., 0.])):
+        idx = random.randint(0,5)
+        yy_trg = y_trg[idx]
+    yy_trg = onehot2label(yy_trg.unsqueeze(0)).squeeze(0)
+    yy_trg = yy_trg.long()
+    s_trg = nets.netSE(x_segm[:,idx], yy_trg)
+    
+    #genero l immagine fake passandogli la segmentate/reale di un truck con lo stylecode della car
+    x_fake, t_fake = nets.netG(x_real, t_img, c_trg, style = s_trg, wav_type=None)
+    
+    
+    #calcolo la loss passando al dsicriminatore la label target car e la fake
+    out = nets.netD_style(x_fake, yy_trg)
+    loss_adv = adv_loss(out, 1)
+
+    # style reconstruction loss
+    #estgrapolo stile da fake img segm passando sempre stesso target car??
+    s_pred = nets.netSE(x_fake, yy_trg)
+    loss_sty = torch.mean(torch.abs(s_pred - s_trg))
+
+    # diversity sensitive loss
+    # s_trg2 = nets.style_encoder(x_ref2, y_trg)
+    # x_fake2 = nets.generator(x_real, s_trg2, masks=masks)
+    # x_fake2 = x_fake2.detach()
+    # loss_ds = torch.mean(torch.abs(x_fake - x_fake2))
+
+
+    #USARE QUELLA CHE GIA CI STA
+    # cycle-consistency loss
+    # s_org = netSE(x_real, y_org)
+    # x_rec = netG(x_fake, style=s_org, )
+    # loss_cyc = torch.mean(torch.abs(x_rec - x_real))
+
+    loss = loss_adv +loss_sty  #c*args.lambda_sty  #+ args.lambda_cyc * loss_cyc
+    return loss_adv,  loss_sty.item()
+                    #loss_cyc.item()]
+
+import torch.nn.functional as F
+def adv_loss(logits, target):
+    assert target in [1, 0]
+    targets = torch.full_like(logits, fill_value=target)
+    loss = F.binary_cross_entropy_with_logits(logits, targets)
+    return loss
