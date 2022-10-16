@@ -276,13 +276,13 @@ def train(args):
                 optims.h_optimizier.zero_grad()
                 if args.classes[1]:
                     optims.se_optimizier.zero_grad()
-                    # optims.ds_optimizier.zero_grad()
+                    optims.ds_optimizier.zero_grad()
                 g_loss.backward()
                 optims.g_optimizier.step()
                 optims.h_optimizier.step()
                 if args.classes[1]:
                     optims.se_optimizier.step()
-                    # optims.ds_optimizier.step()
+                    optims.ds_optimizier.step()
                 moving_average(nets.netG, nets.netG_use, beta=0.999)
 
                 if (i + 0) % args.logs_every == 0:
