@@ -149,11 +149,13 @@ class DroneVeichleDataset(Dataset):
                     img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
                     img, img_pair = raw_preprocess(img, get_s=True, path_pair=i.replace(split+"imgr",split+"img"), img_size = self.img_size)
 
-                    self.raw_dataset.append([(img, img_pair), c])
                     if classes:
                         classes_seg, classes_labels = segmented_classes_extract(split, i, self.img_size, box, infrared=True)
+                        if classes_labels ==[]:
+                            continue
                         self.raw_classes.append(classes_seg)
                         self.seg_classes_labels.append(classes_labels)
+                    self.raw_dataset.append([(img, img_pair), c])
 
                     #?????
                     a =  i.replace(split+"imgr",split+"masksr")
@@ -176,11 +178,14 @@ class DroneVeichleDataset(Dataset):
                         img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
                         img, img_pair = raw_preprocess(img, get_s=True, path_pair=i.replace(split+"img",split+"imgr"), img_size = self.img_size)
 
-                        self.raw_dataset.append([(img, img_pair), c])
                         if classes:
                             classes_seg, classes_labels = segmented_classes_extract(split, i, self.img_size, box)
+                            if classes_labels == []:
+                                continue
                             self.raw_classes.append(classes_seg)
                             self.seg_classes_labels.append(classes_labels)
+
+                        self.raw_dataset.append([(img, img_pair), c])
 
                         #?????
                         a =  i.replace(split+"img",split+"masks")
