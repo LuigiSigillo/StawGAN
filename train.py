@@ -24,11 +24,11 @@ def train(args):
     # set_seed(args.random_seed)
     if not args.preloaded_data:
         syn_dataset = DroneVeichleDataset(
-            path=args.dataset_path, split='train', img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim, lab=args.lab, classes=args.classes)
+            path=args.dataset_path, split='train', img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim, lab=args.lab, classes=args.classes[0])
         syn_loader = DataLoader(
             syn_dataset, batch_size=args.batch_size, shuffle=True,)
         syneval_dataset = DroneVeichleDataset(
-            path=args.dataset_path, split='val', img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim,lab=args.lab, classes=args.classes)
+            path=args.dataset_path, split='val', img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim,lab=args.lab, classes=args.classes[0])
     else:
         idx = 0
         tensors_path = "/tensors/tensors_paired"
@@ -46,6 +46,7 @@ def train(args):
     in_c = 1 if not args.color_images else 3
     in_c_gen = in_c+4 if args.wavelet_type != None else in_c
     in_c_gen = 1 if args.lab else in_c_gen
+    in_c_gen = in_c_gen+6 if (args.classes[0] and not args.classes[1]) else in_c_gen
     if args.qsn or args.phm:
         while (in_c_gen + args.c_dim) % 4 != 0: #3+2
             in_c_gen+=1
@@ -62,8 +63,8 @@ def train(args):
                         "netD_i": Discriminator(c_dim=args.c_dim * 2, image_size=args.img_size, colored_input=args.color_images,real=args.real, qsn=args.qsn, phm=args.phm),
                         "netD_t": Discriminator(c_dim=args.c_dim * 2, image_size=args.img_size, colored_input=args.color_images,real=args.real, qsn=args.qsn, phm=args.phm),
                         "netH":  ShapeUNet(img_ch=in_c, output_ch=1, mid=args.h_conv,real=args.real, qsn=args.qsn, phm=args.phm),
-                        "netSE": StyleEncoder(img_size=args.img_size).to(device) if args.classes else None,
-                        "netD_style" : DiscriminatorStyle(img_size=args.img_size).to(device) if args.classes else None
+                        "netSE": StyleEncoder(img_size=args.img_size).to(device) if args.classes[1] else None,
+                        "netD_style" : DiscriminatorStyle(img_size=args.img_size).to(device) if args.classes[1] else None
                         })
     nets.netG.to(device)
     nets.netD_i.to(device)
@@ -75,8 +76,8 @@ def train(args):
                           "di_optimizier": torch.optim.Adam(nets.netD_i.parameters(), lr=dlr, betas=(args.betas[0], args.betas[1])),
                           "dt_optimizier": torch.optim.Adam(nets.netD_t.parameters(), lr=dlr, betas=(args.betas[0], args.betas[1])),
                           "h_optimizier": torch.optim.Adam(nets.netH.parameters(), lr=glr, betas=(args.betas[0], args.betas[1])),
-                          "se_optimizier": torch.optim.Adam(nets.netSE.parameters(), lr=glr, betas=(args.betas[0], args.betas[1])) if args.classes else None,
-                          "ds_optimizier": torch.optim.Adam(nets.netD_style.parameters(), lr=dlr, betas=(args.betas[0], args.betas[1])) if args.classes else None
+                          "se_optimizier": torch.optim.Adam(nets.netSE.parameters(), lr=glr, betas=(args.betas[0], args.betas[1])) if args.classes[1] else None,
+                          "ds_optimizier": torch.optim.Adam(nets.netD_style.parameters(), lr=dlr, betas=(args.betas[0], args.betas[1])) if args.classes[1] else None
                           }) 
 
     if args.sepoch > 0:
@@ -96,7 +97,7 @@ def train(args):
         wandb.run.name = args.experiment_name
         for epoch in tqdm(range(args.sepoch, args.epoch), initial=args.sepoch, total=args.epoch):
             for i, batch in tqdm(enumerate(syn_loader), total=len(syn_loader)):
-                if args.classes:
+                if args.classes[0]:
                     (x_real, t_img, paired_img, mask, label_org, t_imgs_classes_org, classes_org) = batch
                 else:
                     (x_real, t_img, paired_img, mask, label_org) = batch
@@ -112,7 +113,7 @@ def train(args):
                 d_org = label2onehot(label_org, args.c_dim * 2)
                 g_trg = label2onehot(label_trg, args.c_dim * 2)
 
-                if args.classes:
+                if args.classes[0]:
                     rand_idx_classes = torch.randperm(classes_org.size(0))
                     classes_trg = classes_org[rand_idx_classes]
                     c_classes_trg = (label2onehot(classes_trg, 6) - torch.tensor([1,0,0,0,0,0])).to(device)
@@ -156,9 +157,9 @@ def train(args):
 
                 # Compute loss with fake whole images.
                 with torch.no_grad():
-                    yy_trg, style_trg, x_segm = get_style(nets,y_trg=c_classes_trg, x_segm= t_imgs_classes_trg)  if args.classes else (None, None, None)
+                    yy_trg, style_trg, x_segm = get_style(nets,y_trg=c_classes_trg, x_segm= t_imgs_classes_trg)  if args.classes[1] else (None, None, None)
 
-                    x_fake, t_fake = nets.netG(x_real, t_img, c_trg, wav_type=args.wavelet_type, style=style_trg)
+                    x_fake, t_fake = nets.netG(x_real, t_img, c_trg, wav_type=args.wavelet_type, style=style_trg,  class_label=c_classes_trg if (args.classes[0] and not args.classes[1]) else None)
                 # plt.imshow(  x_fake[2].cpu().detach().permute(1, 2, 0).numpy(), cmap='gray')
                 # plt.savefig('x-fake greyscaled')
                 # raise Exception
@@ -220,18 +221,18 @@ def train(args):
                 #  3. Train the generator
                 # Original-to-target domain.
                 x_fake, t_fake = nets.netG(
-                    x_real, t_img, c_trg, wav_type=args.wavelet_type, style=style_trg)
+                    x_real, t_img, c_trg, wav_type=args.wavelet_type, style=style_trg, class_label=c_classes_trg if (args.classes[0] and not args.classes[1]) else None)
                 out_src, out_cls = nets.netD_i(x_fake)
                 g_loss_fake = -torch.mean(out_src)
                 g_loss_cls = F.binary_cross_entropy_with_logits(
                     out_cls, g_trg, reduction='sum') / out_cls.size(0)
                 
                 # Target-to-original domain.
-                yy_org, style_org, x_segm = get_style(nets,y_trg=c_classes_org, x_segm= t_imgs_classes_org) if args.classes else ( None, None, None)
+                yy_org, style_org, x_segm = get_style(nets,y_trg=c_classes_org, x_segm= t_imgs_classes_org) if args.classes[1] else ( None, None, None)
 
-                x_reconst, t_reconst = nets.netG(x_fake, t_fake, c_org, wav_type=args.wavelet_type, style=style_org)
+                x_reconst, t_reconst = nets.netG(x_fake, t_fake, c_org, wav_type=args.wavelet_type, style=style_org, class_label=c_classes_org if (args.classes[0] and not args.classes[1]) else None)
                 g_loss_rec = torch.mean(torch.abs(x_real - x_reconst))
-                if args.classes:
+                if args.classes[1]:
                     g_loss_adva, g_l_sty = compute_g_loss(nets, args, x_real=x_real, t_img=t_img, y_trg=c_classes_trg, c_trg=c_trg, x_segm=t_imgs_classes_trg, c_classes_org=c_classes_org)
                     g_style_loss = g_loss_adva + g_l_sty  
                     # d_style_loss = d_loss+d_loss_fake
@@ -266,20 +267,20 @@ def train(args):
                     g_loss_cls * args.w_g_c  +ssim_loss*args.w_ssim # + shape_loss* args.w_shape
                 gt_loss = gt_loss + args.w_cycle * g_loss_rec_t + \
                     shape_loss_t * args.w_shape + cross_loss * args.w_g_cross
-                style_comp = 0 if not args.classes else g_style_loss *args.w_shape
+                style_comp = 0 if not args.classes[1] else g_style_loss *args.w_shape
                 g_loss = gi_loss + gt_loss + style_comp
 
                 optims.g_optimizier.zero_grad()
                 optims.di_optimizier.zero_grad()
                 optims.dt_optimizier.zero_grad()
                 optims.h_optimizier.zero_grad()
-                if args.classes:
+                if args.classes[1]:
                     optims.se_optimizier.zero_grad()
                     # optims.ds_optimizier.zero_grad()
                 g_loss.backward()
                 optims.g_optimizier.step()
                 optims.h_optimizier.step()
-                if args.classes:
+                if args.classes[1]:
                     optims.se_optimizier.step()
                     # optims.ds_optimizier.step()
                 moving_average(nets.netG, nets.netG_use, beta=0.999)
@@ -297,7 +298,7 @@ def train(args):
                     all_losses["train/G/loss_ssim"] = ssim_loss.item()
                     all_losses["train/G/loss_shape_t"] = shape_loss_t.item()
                     all_losses["train/G/loss_cross"] = cross_loss.item()
-                    if args.classes:
+                    if args.classes[1]:
                         all_losses["train/G/loss_style"] = g_l_sty.item()
                         all_losses["train/G/loss_adva"] = g_loss_adva.item()
 
@@ -323,7 +324,7 @@ def train(args):
                           caption="img_trg_" + str(epoch))}, commit=False)
                 wandb.log({"pair": wandb.Image(pair,
                           caption="pair_" + str(epoch))}, commit=False)
-                if args.classes:
+                if args.classes[1]:
                     wandb.log({"class_seg": wandb.Image(class_seg,
                             caption="class_seg_" + str(epoch))}, commit=False)
                 # raise Exception

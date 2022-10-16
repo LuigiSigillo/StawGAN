@@ -142,14 +142,18 @@ def plot_images(nets, syneval_dataset, device, c_dim, wavelet_type, lab, classes
     with torch.no_grad():
         img = syneval_dataset[idx][0]
         pair_img = syneval_dataset[idx][2]
-        if classes:
-            t_imgs_classes = syneval_dataset[idx][5]
+        if classes[0]:
+            t_imgs_classes_org = syneval_dataset[idx][5]
             classes_org = syneval_dataset[idx][6].unsqueeze(0)
             rand_idx_classes = torch.randperm(classes_org.size(0))
             classes_trg = classes_org[rand_idx_classes]
-            c_classes_trg = label2onehot(classes_trg, 6).to(device)
-            yy_trg, style_trg, x_segm_valid = get_style(nets,y_trg=c_classes_trg, x_segm= t_imgs_classes.unsqueeze(0).to(device))
-        
+            c_classes_trg = (label2onehot(classes_trg, 6) - torch.tensor([1,0,0,0,0,0])).to(device)
+            #classes_org torch.tensor([1,0,0,0,0,0]),([1,1,0,0,0,0])]
+            #  ho una macchina al t_imgs_classes[i][0], ho una macchina in t_imgs_classes[i][0] e un truck in t_imgs_classes[i][1] 
+            t_imgs_classes_org = t_imgs_classes_org.to(device)
+            t_imgs_classes_trg = t_imgs_classes_org[rand_idx_classes].to(device)
+            if classes[1]:
+                yy_trg, style_trg, x_segm_valid = get_style(nets,y_trg=c_classes_trg, x_segm= t_imgs_classes_trg.unsqueeze(0).to(device))
         img = img.unsqueeze(dim=0).to(device)
         try:
             #trg_segm = syneval_dataset[idx][3]
@@ -163,9 +167,9 @@ def plot_images(nets, syneval_dataset, device, c_dim, wavelet_type, lab, classes
             denorm(pred_t2_img).cpu(), \
         # print(getLabel(img, device, 0, args.c_dim).shape,img.shape)
         pred_t1_img, pred_t1_targ = nets.netG_use(img, trg_orig, c=getLabel(img, device, 0, c_dim), 
-                                                wav_type=wavelet_type, style=None if not classes else style_trg )
+                                                wav_type=wavelet_type, style=None if not classes[1] else style_trg, class_label=c_classes_trg if classes[0] and not classes[1] else None)
         pred_t2_img, pred_t2_targ = nets.netG_use(img, trg_orig, c=getLabel(img, device, 1, c_dim), 
-                                                wav_type=wavelet_type, style=None if not classes else style_trg)
+                                                wav_type=wavelet_type, style=None if not classes[1] else style_trg, class_label=c_classes_trg if classes[0] and not classes[1] else None)
 
     if lab:
         return (K.color.lab_to_rgb(img.cpu())), \
@@ -183,7 +187,7 @@ def plot_images(nets, syneval_dataset, device, c_dim, wavelet_type, lab, classes
             pred_t1_targ.cpu(), \
             pred_t2_targ.cpu(), \
             denorm(pair_img).cpu(), \
-            denorm(x_segm_valid).cpu() if classes else None
+            denorm(x_segm_valid).cpu() if classes[1] else None
 
 
 def load_nets(args,nets,sepoch, optims):

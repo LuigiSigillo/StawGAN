@@ -325,12 +325,13 @@ def create_wavelet_from_input_tensor(inputs, mods, wav_type ):
 class Generator(nn.Module):
     # the G of TarGAN
 
-    def __init__(self, in_c, mid_c, layers, s_layers, affine, last_ac=True, colored_input=True, wav=False, real=True, qsn=False, phm=False, phm_n=4, classes=False,spectral=False, last_layer_gen_real=True, lab=False):
+    def __init__(self, in_c, mid_c, layers, s_layers, affine, last_ac=True, colored_input=True, wav=False, real=True, qsn=False, phm=False, phm_n=4, 
+                        classes=(False, False),spectral=False, last_layer_gen_real=True, lab=False):
         super(Generator, self).__init__()
         self.img_encoder = Encoder(in_c, mid_c, layers, affine, phm=phm, qsn=qsn, real=real)
         self.in_c_targ = in_c-4 if wav is not None else in_c
         self.target_encoder = Encoder(self.in_c_targ, mid_c, layers, affine, phm=phm, qsn=qsn, real=real)
-        if not classes:
+        if not classes[1]:
             self.target_decoder = Decoder(mid_c * (2 ** layers), mid_c * (2 ** (layers - 1)), layers, affine,64) 
             self.img_decoder = Decoder(in_c = mid_c * (2 ** layers),mid_c = mid_c * (2 ** (layers - 1)), layers = layers, affine = affine,r=64)
         else:
@@ -347,7 +348,7 @@ class Generator(nn.Module):
             self.out_img = QuaternionConv(mid_c, 4, 1, stride=1, bias=bias)
             self.out_tumor = QuaternionConv(mid_c, 4, 1, stride=1, bias=bias)
         elif real or last_layer_gen_real:
-            if classes:
+            if classes[1]:
                 self.to_rgb = nn.Sequential(
                     nn.InstanceNorm2d(mid_c, affine=True),
                     nn.LeakyReLU(0.2),
@@ -370,17 +371,21 @@ class Generator(nn.Module):
         self.classes = classes
     # G(image,target_image,target_modality) --> (out_image,output_target_area_image)
 
-    def forward(self, img, tumor=None, c=None, mode="train", wav_type=None, style=None):
+    def forward(self, img, tumor=None, c=None, mode="train", wav_type=None, style=None,class_label=None):
         # print("input img shape",img.shape, c.shape) torch.Size([4, 1, 128, 128]) torch.Size([4, 3])
         c = c.view(c.size(0), c.size(1), 1, 1)
         c = c.repeat(1, 1, img.size(2), img.size(3))
+        if self.classes[0] and not self.classes[1]:
+            class_label = class_label.view(class_label.size(0), class_label.size(1), 1, 1)
+            class_label = class_label.repeat(1, 1, img.size(2), img.size(3))
         img_orig = img
         tumor_orig = tumor
         if wav_type != None:
             img = torch.cat([img, create_wavelet_from_input_tensor(img, c, wav_type)], dim=1)
-        
         if self.lab:
             img = img[:,:1,:,:]
+        elif self.classes[0] and not self.classes[1]:
+            img = torch.cat([img, c, class_label], dim=1)
         else:
             img = torch.cat([img, c], dim=1)
         
@@ -389,12 +394,12 @@ class Generator(nn.Module):
         
         x_1 = self.img_encoder(img)
         s_1 = self.share_net(x_1)
-        if self.classes:
+        if self.classes[1]:
             dec_out = self.img_style_decoder(s_1,x_1, style)
         else:
             dec_out = self.img_decoder(s_1,x_1)
 
-        res_img = self.out_img(dec_out) if not self.classes else self.to_rgb(dec_out)
+        res_img = self.out_img(dec_out) if not self.classes[1] else self.to_rgb(dec_out)
         if self.lab:
             res_img = torch.cat([img_orig[:,:1,:,:], res_img], dim=1).to(device)
         #print(res_img.shape)#torch.Size([4, 1, 128, 128])
@@ -403,16 +408,19 @@ class Generator(nn.Module):
         if mode == "train":
             if self.lab:
                 tumor = tumor[:,:1,:,:]
-            tumor = torch.cat([tumor, c], dim=1)
+            elif self.classes[0] and not self.classes[1]:
+                tumor = torch.cat([tumor, c, class_label], dim=1)
+            else:
+                tumor = torch.cat([tumor, c], dim=1)
             if self.qsn or self.phm:
                 tumor = torch.cat((tumor, torch.zeros(tumor.shape[0], self.in_c_targ-tumor.shape[1] ,tumor.shape[2],tumor.shape[3]).to(device)), dim=1).to(device)
             x_2 = self.target_encoder(tumor)
             s_2 = self.share_net(x_2)
-            if self.classes:
+            if self.classes[1]:
                 dec_out = self.target_style_decoder(s_2, x_2, style)
             else:
                 dec_out = self.target_decoder(s_2,x_2)
-            res_tumor = self.out_tumor(dec_out) if not self.classes else self.to_tumor(dec_out)
+            res_tumor = self.out_tumor(dec_out) if not self.classes[1] else self.to_tumor(dec_out)
             if self.lab:
                 res_tumor = torch.cat([tumor_orig[:,:1,:,:], res_tumor], dim=1).to(device)
 

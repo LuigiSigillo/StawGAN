@@ -33,7 +33,7 @@ def segmented_classes_extract(split, i, img_size, box, infrared=False):
             a = i.replace(split+"imgr",split + "maskscol") if infrared else i.replace(split+"img",split + "maskscolr")
             try:
                 img_segm = Image.open(a.replace('.jpg', '_'+str(idx+1)+'.jpg')).convert('L')
-                print('wow')
+                #WOW
             except:
                 continue
         img_segm = img_segm.crop(box)
@@ -121,7 +121,7 @@ class DroneVeichleDataset(Dataset):
             list_path = sorted([os.path.join(path1, x) for x in os.listdir(path1)]) + sorted([os.path.join(path2, x) for x in os.listdir(path2)])
             raw_path = [] #contains RGB image real
             # print(len(list_path), list_path[200])
-            for x in list_path[:200]:
+            for x in list_path:
 
                 if split+"imgr" in x:
                     c = np.array(0) #infrared

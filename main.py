@@ -39,6 +39,12 @@ def str2bool(v):
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
+def tuple_type(strings):
+    strings = strings.replace("(", "").replace(")", "")
+    mapped_bool = map(str2bool, strings.split(","))
+    return tuple(mapped_bool)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-mode', type=str, default='train')
@@ -52,7 +58,7 @@ if __name__ == '__main__':
     parser.add_argument('-eval_every', type=int, default=500)
     parser.add_argument('-batch_size', type=int, default=4)
     parser.add_argument('-eval_batch_size', type=int, default=50)
-    parser.add_argument('-img_size', type=int, default=128)
+    parser.add_argument('-img_size', type=int, default=256)
     parser.add_argument('-epoch', type=int, default=50)
     parser.add_argument('-sepoch', type=int, default=0)
     parser.add_argument("-preloaded_data", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
@@ -60,7 +66,7 @@ if __name__ == '__main__':
     parser.add_argument("-pretrained_generator", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
     parser.add_argument("-color_images", type=str2bool, nargs='?', const=True, default=True, help="Activate nice mode.")
     parser.add_argument("-lab", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
-    parser.add_argument("-classes", type=str2bool, nargs='?', const=True, default=True, help="Activate nice mode.")
+    parser.add_argument("-classes", type=tuple_type, default=(False, False)) #first if injected second if style extracted
     parser.add_argument('-wavelet_type', type=str,default=None) #real or quat
     parser.add_argument("-loss_ssim", type=str2bool, nargs='?', const=True, default=True, help="Activate nice mode.")
     parser.add_argument('-w_ssim', type=float, default=1)
@@ -95,7 +101,6 @@ if __name__ == '__main__':
     check_errors(args)
     print(args)
     set_deterministic(args.random_seed)
-    
     if args.mode=="train":
         if args.dataset=="droneveichle":
             train.train(args)
