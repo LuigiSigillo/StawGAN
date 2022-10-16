@@ -17,14 +17,25 @@ import kornia as K
 
 grayscale = tv.transforms.Grayscale(num_output_channels=1)
 
-def segmented_classes_extract(split, i, img_size, box):
+def segmented_classes_extract(split, i, img_size, box, infrared=False):
     classes_temp, labels_temp = [],[]
+    if infrared:
+        path_or = split+"imgr"
+        path_arrival = split + "maskscolr"
+    else:
+        path_or = split+"img"
+        path_arrival = split + "maskscol"
     for idx in range(6):
-        a =  i.replace(split+"img",split+"maskscol")
+        a =  i.replace(path_or,path_arrival)
         try:
             img_segm = Image.open(a.replace('.jpg', '_'+str(idx+1)+'.jpg')).convert('L')
         except:
-            continue
+            a = i.replace(split+"imgr",split + "maskscol") if infrared else i.replace(split+"img",split + "maskscolr")
+            try:
+                img_segm = Image.open(a.replace('.jpg', '_'+str(idx+1)+'.jpg')).convert('L')
+                print('wow')
+            except:
+                continue
         img_segm = img_segm.crop(box)
 
         # convert image to numpy array
@@ -110,7 +121,7 @@ class DroneVeichleDataset(Dataset):
             list_path = sorted([os.path.join(path1, x) for x in os.listdir(path1)]) + sorted([os.path.join(path2, x) for x in os.listdir(path2)])
             raw_path = [] #contains RGB image real
             # print(len(list_path), list_path[200])
-            for x in list_path[:24]:
+            for x in list_path[:200]:
 
                 if split+"imgr" in x:
                     c = np.array(0) #infrared
@@ -140,7 +151,7 @@ class DroneVeichleDataset(Dataset):
 
                     self.raw_dataset.append([(img, img_pair), c])
                     if classes:
-                        classes_seg, classes_labels = segmented_classes_extract(split, i, self.img_size, box)
+                        classes_seg, classes_labels = segmented_classes_extract(split, i, self.img_size, box, infrared=True)
                         self.raw_classes.append(classes_seg)
                         self.seg_classes_labels.append(classes_labels)
 
@@ -263,10 +274,16 @@ class DroneVeichleDataset(Dataset):
         
         if self.classes:
             seg_labels = [torch.from_numpy(lab) for lab in seg_labels]
-            while(len(seg_labels)) < 5:
+            if seg_labels == []:
+                plt.imshow(denorm(img).cpu().numpy().transpose(1,2,0))
+                plt.title('target image')
+                plt.savefig('a') 
+                print(item) 
+                raise Exception
+            while(len(seg_labels)) < 6:
                 seg_labels.append(torch.tensor(0))
                 t_imgs_classes.append(torch.zeros(t_img.shape))
-
+            
             return img, t_img, paired_img, seg_mask, class_label, torch.stack(t_imgs_classes), torch.stack(seg_labels)
 
         return img, t_img, paired_img, seg_mask, class_label, #if training mode torch.stack(t_imgs_classes), torch.stack(seg_labels)
@@ -714,36 +731,52 @@ class KAISTDataset(Dataset):
         out = (out - out.min()) / (out.max() - out.min())
 
         return out
-from utils import denorm
+from utils import denorm, label2onehot
 def testing_dataset():
     dt = DroneVeichleDataset(split="val", img_size=128, classes=True)
     # dt = ChaosDataset_Syn_new(path="../QWT/TarGAN/datasets/chaos2019")
-    syn_loader = DataLoader(dt, shuffle=True)
+    syn_loader = DataLoader(dt, shuffle=False)
     for epoch, (x_real, t_img, paired_img, mask, label_org, classes_seg, lab_seg) in enumerate(syn_loader):
     # for epoch, (x_real, paired_img, label_org) in enumerate(syn_loader):
 
         plt.axis('off')
-        plt.subplot(241)
-        plt.imshow(denorm(x_real).squeeze().cpu().numpy().transpose(1,2,0))
-        plt.title('real image')
-        plt.subplot(242)
-        plt.imshow(denorm(t_img).squeeze().cpu().numpy().transpose(1,2,0))
-        plt.title('target image')
-        plt.subplot(243)
-        plt.imshow(paired_img.squeeze().cpu().numpy().transpose(1,2,0),)
-        plt.title('paired image')
-        plt.subplot(244)
-        plt.imshow(denorm(mask).squeeze().cpu().numpy(),cmap=plt.get_cmap('gray'))
-        plt.title('target mask')
+        # plt.subplot(241)
+        # plt.imshow(denorm(x_real).squeeze().cpu().numpy().transpose(1,2,0))
+        # plt.title('real image')
+        # plt.subplot(242)
+        # plt.imshow(denorm(t_img).squeeze().cpu().numpy().transpose(1,2,0))
+        # plt.title('target image')
+        # plt.subplot(243)
+        # plt.imshow(paired_img.squeeze().cpu().numpy().transpose(1,2,0),)
+        # plt.title('paired image')
+        # plt.subplot(244)
+        # plt.imshow(denorm(mask).squeeze().cpu().numpy(),cmap=plt.get_cmap('gray'))
+        # plt.title('target mask')
         # plt.savefig('test'+str(epoch))
         # plt.show()
-        if epoch >0:
-            break
+
         print(lab_seg)
-        
+        lab_seg = label2onehot(lab_seg, 6)
+
         for classes, l_seg in zip(classes_seg,lab_seg):
             # print(classes.shape)
-            plt.imshow(denorm(classes).squeeze().cpu().numpy().transpose(1,2,0))
+            idxs = [(l_seg[i] ==1) if i>0 else False for i in range(l_seg.size(0))]
+            idx = idxs.index(True) if len(list((filter(lambda score: score == True, idxs)))) == 1 else False
+            if idx == False:
+                check = False
+                while check ==False:
+                    idx = random.randint(1, len(idxs)-1)
+                    check = idxs[idx]
+            
+            plt.imshow(denorm(classes)[idx].cpu().numpy().transpose(1,2,0))
+            plt.title('target image'+str(idx))
+            plt.savefig('a'+str(epoch))
+        #assume batch size = 1, show every target even if not exists
+        for idx in range(classes_seg.size(1)):
+            plt.imshow(denorm(classes_seg)[0][idx].cpu().numpy().transpose(1,2,0))
             plt.title('target image'+str(l_seg[0]))
-            plt.show()
-# testing_dataset()
+            plt.savefig('b'+str(idx))
+        if epoch >0:
+            break
+if __name__ == "main":
+    testing_dataset()

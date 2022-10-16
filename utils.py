@@ -1,4 +1,5 @@
 import os
+from smtpd import DebuggingServer
 import torch
 import random
 import numpy as np
@@ -10,6 +11,9 @@ import torchvision.utils as vutils
 import json
 import kornia as K
 
+device = torch.device("cpu")
+if torch.cuda.is_available():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def denormalize(x):
@@ -132,43 +136,37 @@ def moving_average(model, model_test, beta=0.999):
 
 
 
-def plot_images(netG_use, syneval_dataset, device, c_dim, wavelet_type, lab):
+def plot_images(nets, syneval_dataset, device, c_dim, wavelet_type, lab, classes):
     # fig = plt.figure(dpi=120)
     idx = random.randint(0,200)
     with torch.no_grad():
         img = syneval_dataset[idx][0]
         pair_img = syneval_dataset[idx][2]
-
+        if classes:
+            t_imgs_classes = syneval_dataset[idx][5]
+            classes_org = syneval_dataset[idx][6].unsqueeze(0)
+            rand_idx_classes = torch.randperm(classes_org.size(0))
+            classes_trg = classes_org[rand_idx_classes]
+            c_classes_trg = label2onehot(classes_trg, 6).to(device)
+            yy_trg, style_trg, x_segm_valid = get_style(nets,y_trg=c_classes_trg, x_segm= t_imgs_classes.unsqueeze(0).to(device))
+        
         img = img.unsqueeze(dim=0).to(device)
         try:
             #trg_segm = syneval_dataset[idx][3]
             trg_orig = syneval_dataset[idx][1]
             trg_orig = trg_orig.unsqueeze(dim=0).to(device)
         except:
-            pred_t1_img = netG_use(img, c=getLabel(img, device, 0, c_dim), mode="kaist", wav_type=wavelet_type)
-            pred_t2_img = netG_use(img, c=getLabel(img, device, 1, c_dim), mode="kaist", wav_type=wavelet_type)
+            pred_t1_img = nets.netG_use(img, c=getLabel(img, device, 0, c_dim), mode="kaist", wav_type=wavelet_type)
+            pred_t2_img = nets.netG_use(img, c=getLabel(img, device, 1, c_dim), mode="kaist", wav_type=wavelet_type)
             return denorm(img).cpu(), \
             denorm(pred_t1_img).cpu(), \
             denorm(pred_t2_img).cpu(), \
         # print(getLabel(img, device, 0, args.c_dim).shape,img.shape)
-        pred_t1_img, pred_t1_targ = netG_use(img, trg_orig, c=getLabel(img, device, 0, c_dim),wav_type=wavelet_type)
-        pred_t2_img, pred_t2_targ = netG_use(img, trg_orig, c=getLabel(img, device, 1, c_dim), wav_type=wavelet_type)
-        # plt.subplot(241)
-        # plt.imshow(denorm(img).squeeze().cpu().numpy())
-        # plt.title(str(i + 1) + '_source')
-        # plt.subplot(242)
-        # plt.imshow(denorm(pred_t1_img).squeeze().cpu().numpy(), )
-        # plt.title('pred_x1')
-        # plt.subplot(243)
-        # plt.imshow(denorm(pred_t2_img).squeeze().cpu().numpy(), cmap='gray')
-        # plt.title('pred_x2')
-        # plt.subplot(244)
-        # plt.imshow(denorm(pred_t3_img).squeeze().cpu().numpy(), cmap='gray')
-        # plt.title('pred_x3')
-        # plt.show()
-        # x_concat = []
-        # x_concat = torch.cat(x_concat, dim=0)
-        # plt.close(fig)
+        pred_t1_img, pred_t1_targ = nets.netG_use(img, trg_orig, c=getLabel(img, device, 0, c_dim), 
+                                                wav_type=wavelet_type, style=None if not classes else style_trg )
+        pred_t2_img, pred_t2_targ = nets.netG_use(img, trg_orig, c=getLabel(img, device, 1, c_dim), 
+                                                wav_type=wavelet_type, style=None if not classes else style_trg)
+
     if lab:
         return (K.color.lab_to_rgb(img.cpu())), \
         (K.color.lab_to_rgb(pred_t1_img.cpu())), \
@@ -184,7 +182,8 @@ def plot_images(netG_use, syneval_dataset, device, c_dim, wavelet_type, lab):
             denorm(trg_orig).cpu(), \
             pred_t1_targ.cpu(), \
             pred_t2_targ.cpu(), \
-            denorm(pair_img.cpu())
+            denorm(pair_img).cpu(), \
+            denorm(x_segm_valid).cpu() if classes else None
 
 
 def load_nets(args,nets,sepoch, optims):
@@ -204,3 +203,47 @@ def save_json(json_file, filename):
         json.dump(json_file, f, indent=4, sort_keys=False)
 
 
+def get_valid_targets(y_trg, x_segm):
+    x_segm_valid,y_trg_valid = [],[]
+    for b in range(y_trg.size(0)): #batch size
+        glob_idx = 0
+        found = False
+        x_segm_valid_batch, y_trg_valid_batch = [],[]
+        for idx in range(1,y_trg.size(1)): #scorri tensori fatti cosi torch.tensor([1., 0., 0., 0., 0.]) , skippi il primo che tanto é targ nullo, 
+            if torch.equal(y_trg[b][idx], torch.tensor(0.).to(device)):
+                continue
+            else:
+                found=True
+                x_segm_valid_batch.append(x_segm[b,glob_idx])
+                y_trg_valid_batch.append(torch.tensor(idx))
+                glob_idx+=1
+        if found:
+            rand_id = random.randint(0,len(x_segm_valid_batch)-1)
+            x_segm_valid.append(x_segm_valid_batch[rand_id])
+            y_trg_valid.append(y_trg_valid_batch[rand_id])
+            continue
+        else:
+            # print(x_segm.shape, x_segm_valid.shape)
+            print(y_trg[b])
+            raise Exception("zeros")
+        #yy_trg = onehot2label(yy_trg.unsqueeze(0)).squeeze(0).long()
+    return x_segm_valid,y_trg_valid
+
+def get_style(nets,y_trg, x_segm):
+    x_segm_valid,y_trg_valid = get_valid_targets(y_trg, x_segm)
+    debugging_photo(x_segm_valid)
+    x_segm_valid = torch.stack(x_segm_valid).to(device)
+    y_trg_valid = torch.stack(y_trg_valid).to(device)
+    s_trg = nets.netSE(x_segm_valid, y_trg_valid)
+    return y_trg_valid, s_trg, x_segm_valid
+
+
+#list
+def debugging_photo(x_segm_valid):
+    for i,x_segm in enumerate(x_segm_valid):
+        plt.axis('off')
+        plt.subplot(2,4,i+1)
+        plt.imshow(denorm(x_segm).squeeze().cpu().numpy().transpose(1,2,0))
+        plt.title('real image')
+    
+    plt.savefig('test'+str(1))

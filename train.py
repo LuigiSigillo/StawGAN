@@ -13,14 +13,13 @@ from tqdm import tqdm
 import munch
 import torchgeometry as tgm
 
-
+device = torch.device("cpu")
+if torch.cuda.is_available():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def train(args):
     glr = args.lr
     dlr = args.ttur
-    print(glr, dlr)
-    device = torch.device("cpu")
-    if torch.cuda.is_available():
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
     # set_seed(args.random_seed)
     if not args.preloaded_data:
@@ -53,22 +52,24 @@ def train(args):
         while in_c % 4 !=0:
             in_c+=1
     netG = Generator(in_c=in_c_gen + args.c_dim, mid_c=args.G_conv, layers=2, s_layers=3, affine=True, last_ac=True,
-                     colored_input=args.color_images, wav=args.wavelet_type,real=args.real, qsn=args.qsn, phm=args.phm, lab=args.lab)
+                     colored_input=args.color_images, wav=args.wavelet_type,real=args.real, qsn=args.qsn, phm=args.phm, lab=args.lab, classes= args.classes)
     if args.pretrained_generator:
         netG.load_state_dict(torch.load(
             args.save_path+"/pretrained_gen_"+str(args.img_size)+".pt"))
 
+    
     nets = munch.Munch({"netG": netG,
                         "netD_i": Discriminator(c_dim=args.c_dim * 2, image_size=args.img_size, colored_input=args.color_images,real=args.real, qsn=args.qsn, phm=args.phm),
                         "netD_t": Discriminator(c_dim=args.c_dim * 2, image_size=args.img_size, colored_input=args.color_images,real=args.real, qsn=args.qsn, phm=args.phm),
                         "netH":  ShapeUNet(img_ch=in_c, output_ch=1, mid=args.h_conv,real=args.real, qsn=args.qsn, phm=args.phm),
-                        "netSE": StyleEncoder() if args.classes else None,
-                        "netD_style" : DiscriminatorStyle() if args.classes else None
+                        "netSE": StyleEncoder(img_size=args.img_size).to(device) if args.classes else None,
+                        "netD_style" : DiscriminatorStyle(img_size=args.img_size).to(device) if args.classes else None
                         })
     nets.netG.to(device)
     nets.netD_i.to(device)
     nets.netD_t.to(device)
     nets.netH.to(device)
+
 
     optims = munch.Munch({"g_optimizier": torch.optim.Adam(nets.netG.parameters(), lr=glr, betas=(args.betas[0], args.betas[1])),
                           "di_optimizier": torch.optim.Adam(nets.netD_i.parameters(), lr=dlr, betas=(args.betas[0], args.betas[1])),
@@ -94,7 +95,12 @@ def train(args):
     with wandb.init(config=args, project="targan_drone") as run:
         wandb.run.name = args.experiment_name
         for epoch in tqdm(range(args.sepoch, args.epoch), initial=args.sepoch, total=args.epoch):
-            for i, (x_real, t_img, paired_img, mask, label_org, t_imgs_classes, classes_org) in tqdm(enumerate(syn_loader), total=len(syn_loader)):
+            for i, batch in tqdm(enumerate(syn_loader), total=len(syn_loader)):
+                if args.classes:
+                    (x_real, t_img, paired_img, mask, label_org, t_imgs_classes_org, classes_org) = batch
+                else:
+                    (x_real, t_img, paired_img, mask, label_org) = batch
+
                 # 1. Preprocess input data
                 # Generate target domain labels randomly.
                 rand_idx = torch.randperm(label_org.size(0))
@@ -106,6 +112,15 @@ def train(args):
                 d_org = label2onehot(label_org, args.c_dim * 2)
                 g_trg = label2onehot(label_trg, args.c_dim * 2)
 
+                if args.classes:
+                    rand_idx_classes = torch.randperm(classes_org.size(0))
+                    classes_trg = classes_org[rand_idx_classes]
+                    c_classes_trg = (label2onehot(classes_trg, 6) - torch.tensor([1,0,0,0,0,0])).to(device)
+                    #classes_org torch.tensor([1,0,0,0,0,0]),([1,1,0,0,0,0])]
+                    #  ho una macchina al t_imgs_classes[i][0], ho una macchina in t_imgs_classes[i][0] e un truck in t_imgs_classes[i][1] 
+                    c_classes_org = label2onehot(classes_org, 6).to(device)
+                    t_imgs_classes_org = t_imgs_classes_org.to(device)
+                    t_imgs_classes_trg = t_imgs_classes_org[rand_idx_classes].to(device)
 
 
                 # plt.subplot(231)
@@ -141,8 +156,9 @@ def train(args):
 
                 # Compute loss with fake whole images.
                 with torch.no_grad():
-                    x_fake, t_fake = nets.netG(
-                        x_real, t_img, c_trg, wav_type=args.wavelet_type)
+                    yy_trg, style_trg, x_segm = get_style(nets,y_trg=c_classes_trg, x_segm= t_imgs_classes_trg)  if args.classes else (None, None, None)
+
+                    x_fake, t_fake = nets.netG(x_real, t_img, c_trg, wav_type=args.wavelet_type, style=style_trg)
                 # plt.imshow(  x_fake[2].cpu().detach().permute(1, 2, 0).numpy(), cmap='gray')
                 # plt.savefig('x-fake greyscaled')
                 # raise Exception
@@ -204,28 +220,24 @@ def train(args):
                 #  3. Train the generator
                 # Original-to-target domain.
                 x_fake, t_fake = nets.netG(
-                    x_real, t_img, c_trg, wav_type=args.wavelet_type)
+                    x_real, t_img, c_trg, wav_type=args.wavelet_type, style=style_trg)
                 out_src, out_cls = nets.netD_i(x_fake)
                 g_loss_fake = -torch.mean(out_src)
                 g_loss_cls = F.binary_cross_entropy_with_logits(
                     out_cls, g_trg, reduction='sum') / out_cls.size(0)
-                # mask = mask.repeat(1, 3, 1, 1)
-                # paired_img = paired_img.repeat(1, 3, 1, 1)
-                # print(paired_img.shape,nets.netH(x_fake).shape )
-                # shape_loss = F.mse_loss(nets.netH(x_fake), paired_img.float())
+                
                 # Target-to-original domain.
-                x_reconst, t_reconst = nets.netG(
-                    x_fake, t_fake, c_org, wav_type=args.wavelet_type)
+                yy_org, style_org, x_segm = get_style(nets,y_trg=c_classes_org, x_segm= t_imgs_classes_org) if args.classes else ( None, None, None)
+
+                x_reconst, t_reconst = nets.netG(x_fake, t_fake, c_org, wav_type=args.wavelet_type, style=style_org)
                 g_loss_rec = torch.mean(torch.abs(x_real - x_reconst))
                 if args.classes:
-                    rand_idx_classes = torch.randperm(classes_org.size(0))
-                    classes_trg = classes_org[rand_idx_classes]
-                    c_classes_trg = label2onehot(classes_trg, 5)
-                    g_loss_adva, g_l_sty = compute_g_loss(nets, args, x_real=x_real, t_img=t_img, y_trg=c_classes_trg, c_trg=c_trg, x_segm=t_imgs_classes)
-                    g_style_loss = g_loss_adva + g_l_sty
-                    optims.se_optimizer.zero_grad()
-                    optims.ds_optimizer.zero_grad()
-                    
+                    g_loss_adva, g_l_sty = compute_g_loss(nets, args, x_real=x_real, t_img=t_img, y_trg=c_classes_trg, c_trg=c_trg, x_segm=t_imgs_classes_trg, c_classes_org=c_classes_org)
+                    g_style_loss = g_loss_adva + g_l_sty  
+                    # d_style_loss = d_loss+d_loss_fake
+                    # optims.ds_optimizier.zero_grad()
+                    # d_style_loss.backward()
+                    # optims.ds_optimizier.step()
                 if args.loss_ssim:
                     ssim_loss = ssim(x_fake, paired_img.to(device))
                 else:
@@ -261,20 +273,23 @@ def train(args):
                 optims.di_optimizier.zero_grad()
                 optims.dt_optimizier.zero_grad()
                 optims.h_optimizier.zero_grad()
+                if args.classes:
+                    optims.se_optimizier.zero_grad()
+                    # optims.ds_optimizier.zero_grad()
                 g_loss.backward()
                 optims.g_optimizier.step()
                 optims.h_optimizier.step()
                 if args.classes:
-                    optims.se_optimizer.step()
-                    optims.ds_optimizer.step()
+                    optims.se_optimizier.step()
+                    # optims.ds_optimizier.step()
                 moving_average(nets.netG, nets.netG_use, beta=0.999)
 
                 if (i + 0) % args.logs_every == 0:
                     all_losses = dict()
                     all_losses["train/D/loss_total"] = d_loss.item()
                     all_losses["train/G/loss_total"] = g_loss.item()
-                    all_losses["train/D/w_di"] = w_di
-                    all_losses["train/D/w_dt"] = w_dt
+                    all_losses["train/D/di"] = di_loss
+                    all_losses["train/D/dt"] = dt_loss
                     all_losses["train/D/loss_f_cls"] = d_loss_f_cls.item()
                     all_losses["train/D/loss_f_cls_t"] = d_loss_f_cls_t.item()
                     all_losses["train/G/loss_cls"] = g_loss_cls.item()
@@ -282,7 +297,9 @@ def train(args):
                     all_losses["train/G/loss_ssim"] = ssim_loss.item()
                     all_losses["train/G/loss_shape_t"] = shape_loss_t.item()
                     all_losses["train/G/loss_cross"] = cross_loss.item()
-                    all_losses["train/G/loss_style"] = style_comp
+                    if args.classes:
+                        all_losses["train/G/loss_style"] = g_l_sty.item()
+                        all_losses["train/G/loss_adva"] = g_loss_adva.item()
 
                     wandb.log(all_losses, step=ii, commit=True)
                 ii = ii + 1
@@ -290,8 +307,8 @@ def train(args):
 
             if (epoch + 1) % 1 == 0 and (epoch + 1) > 0:
                 # show syn images after every epoch
-                x_real, x_infrared, x_rgb, trg_orig, trg_infra_fake, trg_rgb_fake, pair = plot_images(
-                    nets.netG_use, syneval_dataset, device, args.c_dim, args.wavelet_type, args.lab)
+                x_real, x_infrared, x_rgb, trg_orig, trg_infra_fake, trg_rgb_fake, pair, class_seg = plot_images(
+                    nets, syneval_dataset, device, args.c_dim, args.wavelet_type, args.lab, args.classes)
                 wandb.log({"orig": wandb.Image(
                     x_real, caption="orig_" + str(epoch))}, commit=False)
                 wandb.log(
@@ -306,6 +323,9 @@ def train(args):
                           caption="img_trg_" + str(epoch))}, commit=False)
                 wandb.log({"pair": wandb.Image(pair,
                           caption="pair_" + str(epoch))}, commit=False)
+                if args.classes:
+                    wandb.log({"class_seg": wandb.Image(class_seg,
+                            caption="class_seg_" + str(epoch))}, commit=False)
                 # raise Exception
 
             if (epoch + 1) % args.save_every == 0:
@@ -367,30 +387,20 @@ def onehot2label(onehotvec):
     """Convert label indices to one-hot vectors."""
     batch_size = onehotvec.size(0)
     out = torch.zeros(batch_size, 1)
+    # print(onehotvec.shape)
     for i in range(batch_size):
-        item = (onehotvec[i] == 1).nonzero(as_tuple=True)[0].item()
+        item = (onehotvec.squeeze()[i] == 1).nonzero(as_tuple=True)[0].item()
         out[i] = item
-        print(item)
          
     return out
 
-import random
-def compute_g_loss(nets, args, x_real, t_img, c_trg, y_trg, x_segm=None):
-    
+def compute_g_loss(nets, args, x_real, t_img, c_trg, y_trg, x_segm=None, c_classes_org=None):
     # estrapolo lo style code dalla immagine segmentata/quella intera?
-    # gli passo anche la lebel target (quindi se é car car?)
+    # gli passo anche la label target (quindi se é car car?)
 
-    yy_trg = torch.tensor([1., 0., 0., 0., 0.])
-    while torch.equal(yy_trg,torch.tensor([1., 0., 0., 0., 0.])):
-        idx = random.randint(0,5)
-        yy_trg = y_trg[idx]
-    yy_trg = onehot2label(yy_trg.unsqueeze(0)).squeeze(0)
-    yy_trg = yy_trg.long()
-    s_trg = nets.netSE(x_segm[:,idx], yy_trg)
-    
+    yy_trg, s_trg, x_segm_valid = get_style(nets=nets, x_segm=x_segm, y_trg=y_trg)
     #genero l immagine fake passandogli la segmentate/reale di un truck con lo stylecode della car
-    x_fake, t_fake = nets.netG(x_real, t_img, c_trg, style = s_trg, wav_type=None)
-    
+    x_fake, t_fake = nets.netG(x_real, t_img, c_trg, style = s_trg, wav_type=args.wavelet_type)
     
     #calcolo la loss passando al dsicriminatore la label target car e la fake
     out = nets.netD_style(x_fake, yy_trg)
@@ -398,7 +408,7 @@ def compute_g_loss(nets, args, x_real, t_img, c_trg, y_trg, x_segm=None):
 
     # style reconstruction loss
     #estgrapolo stile da fake img segm passando sempre stesso target car??
-    s_pred = nets.netSE(x_fake, yy_trg)
+    s_pred = nets.netSE(t_fake, yy_trg)
     loss_sty = torch.mean(torch.abs(s_pred - s_trg))
 
     # diversity sensitive loss
@@ -414,8 +424,10 @@ def compute_g_loss(nets, args, x_real, t_img, c_trg, y_trg, x_segm=None):
     # x_rec = netG(x_fake, style=s_org, )
     # loss_cyc = torch.mean(torch.abs(x_rec - x_real))
 
-    loss = loss_adv +loss_sty  #c*args.lambda_sty  #+ args.lambda_cyc * loss_cyc
-    return loss_adv,  loss_sty.item()
+    #loss = loss_adv +loss_sty  #c*args.lambda_sty  #+ args.lambda_cyc * loss_cyc
+
+    #d_loss_real, d_losses_fake = compute_d_loss(nets, args, x_real, c_classes_org, yy_trg, x_segm, c_trg, t_img)
+    return loss_adv,  loss_sty#, d_loss_real, d_losses_fake
                     #loss_cyc.item()]
 
 import torch.nn.functional as F
@@ -424,3 +436,23 @@ def adv_loss(logits, target):
     targets = torch.full_like(logits, fill_value=target)
     loss = F.binary_cross_entropy_with_logits(logits, targets)
     return loss
+
+# def compute_d_loss(nets, args, x_real, c_classes_org, yy_trg, x_segm, c_trg, t_img):
+#     # with real images
+#     x_real.requires_grad_()
+#     yy_org, s_trg, x_segm_valid = get_style(nets=nets, x_segm=x_segm, y_trg=c_classes_org)
+#     out = nets.netD_style(x_real, yy_org)
+#     loss_real = adv_loss(out, 1)
+#     # loss_reg = r1_reg(out, x_real)
+
+#     # with fake images
+#     with torch.no_grad():
+#         s_trg = nets.netSE(x_segm_valid, yy_trg)
+#         x_fake, t_fake =  nets.netG(x_real, t_img, c_trg, style = s_trg, wav_type=args.wavelet_type)
+#     out = nets.netD_style(x_fake, yy_trg)
+#     loss_fake = adv_loss(out, 0)
+
+#     loss = loss_real + loss_fake #+  args.lambda_reg * loss_reg
+#     return loss_real, \
+#                        loss_fake,\
+#                     #    loss_reg.item()

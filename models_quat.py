@@ -347,11 +347,20 @@ class Generator(nn.Module):
             self.out_img = QuaternionConv(mid_c, 4, 1, stride=1, bias=bias)
             self.out_tumor = QuaternionConv(mid_c, 4, 1, stride=1, bias=bias)
         elif real or last_layer_gen_real:
-            self.out_img = nn.Conv2d(mid_c, 1 if not colored_input else 2 if lab else 3, 1, bias=bias)
-            self.out_tumor = nn.Conv2d(mid_c, 1 if not colored_input else 2 if lab else 3, 1, bias=bias)
             if classes:
-                self.out_img = nn.Conv2d(384, 1 if not colored_input else 2 if lab else 3, 1, bias=bias)
-                self.out_tumor = nn.Conv2d(384, 1 if not colored_input else 2 if lab else 3, 1, bias=bias)
+                self.to_rgb = nn.Sequential(
+                    nn.InstanceNorm2d(mid_c, affine=True),
+                    nn.LeakyReLU(0.2),
+                    nn.Conv2d(mid_c, (1 if not colored_input else 2 if lab else 3), 1, 1, 0)
+                    )
+                self.to_tumor = nn.Sequential(
+                    nn.InstanceNorm2d(mid_c, affine=True),
+                    nn.LeakyReLU(0.2),
+                    nn.Conv2d(mid_c, (1 if not colored_input else 2 if lab else 3), 1, 1, 0)
+                    )
+            else:
+                self.out_img = nn.Conv2d(mid_c, 1 if not colored_input else 2 if lab else 3, 1, bias=bias)
+                self.out_tumor = nn.Conv2d(mid_c, 1 if not colored_input else 2 if lab else 3, 1, bias=bias)
         self.last_ac = last_ac
         self.real = real
         self.qsn = qsn
@@ -372,8 +381,8 @@ class Generator(nn.Module):
         
         if self.lab:
             img = img[:,:1,:,:]
-        
-        img = torch.cat([img, c], dim=1)
+        else:
+            img = torch.cat([img, c], dim=1)
         
         if self.qsn or self.phm:
             img = torch.cat((img, torch.zeros(img.shape[0], self.in_c-img.shape[1] ,img.shape[2],img.shape[3]).to(device)), dim=1).to(device)
@@ -384,8 +393,8 @@ class Generator(nn.Module):
             dec_out = self.img_style_decoder(s_1,x_1, style)
         else:
             dec_out = self.img_decoder(s_1,x_1)
- 
-        res_img = self.out_img(dec_out)
+
+        res_img = self.out_img(dec_out) if not self.classes else self.to_rgb(dec_out)
         if self.lab:
             res_img = torch.cat([img_orig[:,:1,:,:], res_img], dim=1).to(device)
         #print(res_img.shape)#torch.Size([4, 1, 128, 128])
@@ -403,7 +412,7 @@ class Generator(nn.Module):
                 dec_out = self.target_style_decoder(s_2, x_2, style)
             else:
                 dec_out = self.target_decoder(s_2,x_2)
-            res_tumor = self.out_tumor(dec_out)
+            res_tumor = self.out_tumor(dec_out) if not self.classes else self.to_tumor(dec_out)
             if self.lab:
                 res_tumor = torch.cat([tumor_orig[:,:1,:,:], res_tumor], dim=1).to(device)
 
@@ -665,14 +674,13 @@ class DecoderStyle(nn.Module):
         #     dim_out = min(in_c*2, max_conv_dim)
         #     self.decode.insert(0, AdainResBlk(dim_out, in_c, style_dim, w_hpf=w_hpf, upsample=True))  # stack-like
         #     in_c = dim_out
-           
+        
+        self.decode.append(AdainResBlk(192, 192, style_dim, w_hpf=w_hpf, upsample=True))  # stack-like
         # bottleneck blocks
         # for _ in range(2):
-        self.decode.insert(0, AdainResBlk(384, 384, style_dim, w_hpf=w_hpf, upsample=True))  # stack-like
-
-        self.decode.insert(0, AdainResBlk(320, 320, style_dim, w_hpf=w_hpf))
-        self.decode.insert(0, AdainResBlk(256, 256, style_dim, w_hpf=w_hpf))
-        self.decode.insert(0, AdainResBlk(192, 192, style_dim, w_hpf=w_hpf))
+        self.decode.append(AdainResBlk(224, 64, style_dim, w_hpf=w_hpf))
+        #self.decode.insert(0, AdainResBlk(256, 256, style_dim, w_hpf=w_hpf))
+        #self.decode.insert(0, AdainResBlk(192, 192, style_dim, w_hpf=w_hpf))
     
     
     def forward(self, share_input, encoder_input, style):
@@ -686,12 +694,7 @@ class DecoderStyle(nn.Module):
         # return x
         encoder_input.reverse()
         for i,block in enumerate(self.decode):
-            if i<4:
-                enc_in = encoder_input[0][0]
-            else:
-                enc_in = encoder_input[1][0]
-
-            x = torch.cat([share_input, enc_in], dim=1)
+            x = torch.cat([share_input, encoder_input[i][0]], dim=1)
             x = block(x, style)
             share_input = x
         return x
