@@ -207,7 +207,8 @@ DISCRIMINATOR
 class Discriminator(nn.Module):
     # the D_x or D_r of TarGAN ( backbone of PatchGAN )
 
-    def __init__(self, image_size=256, conv_dim=64, c_dim=5, repeat_num=6, colored_input=True, real=True, qsn=False, phm=False, phm_n=4, spectral=False, last_layer_gen_real=True):
+    def __init__(self, image_size=256, conv_dim=64, c_dim=5, repeat_num=6, colored_input=True, classes = (False,False),
+                 real=True, qsn=False, phm=False, phm_n=4, spectral=False, last_layer_gen_real=True):
         super(Discriminator, self).__init__()
         layers = []
         if phm:
@@ -276,6 +277,8 @@ class Discriminator(nn.Module):
             else:
                 self.conv1 = nn.Conv2d(curr_dim, 1, kernel_size=3, stride=1, padding=1, bias=False)
                 self.conv2 = nn.Conv2d(curr_dim, c_dim, kernel_size=kernel_size, bias=False)
+                if classes[0] and not classes[1]:
+                    self.conv3 = nn.Conv2d(curr_dim, 6*2, kernel_size=kernel_size, bias=False)
 
         if last_layer_gen_real:
             if spectral:
@@ -287,6 +290,7 @@ class Discriminator(nn.Module):
         self.qsn = qsn
         self.phm = phm
         self.in_c = 1 if not colored_input else 3 if real else 4
+        self.classes= classes
     def forward(self, x_real):
         # print("discriminatore in entrata", x.shape) #torch.Size([4, 1, 128, 128])
         # rgb + aalpha
@@ -296,14 +300,18 @@ class Discriminator(nn.Module):
         #     x = torch.cat([x, grayscale(x)], 1)
         # print("discriminatore dopo main",h.shape) #torch.Size([4, 2048, 2, 2])
         if self.qsn or self.phm:
-            x_real = torch.cat((x_real, torch.zeros(x_real.shape[0], self.in_c-x_real.shape[1] ,x_real.shape[2],x_real.shape[3]).to(device)), dim=1).to(device)
+            x_real = torch.cat((x_real, 
+                                torch.zeros(x_real.shape[0], self.in_c-x_real.shape[1] ,x_real.shape[2],x_real.shape[3]).to(device)),
+                                 dim=1).to(device)
         h = self.main(x_real)
         out_src = self.conv1(h)
         out_cls = self.conv2(h)
-
+        if self.classes[0] and not self.classes[1]:
+            out_class_seg = self.conv3(h)
         # print("discriminatore out src",out_src.shape) #torch.Size([4, 1, 2, 2])
         # print("discriminatore out cls",out_cls.shape, "view",out_cls.view(out_cls.size(0), out_cls.size(1)).shape) #torch.Size([4, 6, 1, 1]) view torch.Size([4, 6])
-        return out_src, out_cls.view(out_cls.size(0), out_cls.size(1))
+        return out_src, out_cls.view(out_cls.size(0), out_cls.size(1)), \
+                out_class_seg.view(out_class_seg.size(0), out_class_seg.size(1)) if self.classes[0] and not self.classes[1] else out_cls
 
 
 

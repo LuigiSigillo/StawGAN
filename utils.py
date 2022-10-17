@@ -136,9 +136,9 @@ def moving_average(model, model_test, beta=0.999):
 
 
 
-def plot_images(nets, syneval_dataset, device, c_dim, wavelet_type, lab, classes):
+def plot_images(nets, syneval_dataset, device, c_dim, wavelet_type, lab, classes, debug):
     # fig = plt.figure(dpi=120)
-    idx = random.randint(0,200)
+    idx = random.randint(0,20) if debug else random.randint(0,200)
     with torch.no_grad():
         img = syneval_dataset[idx][0]
         pair_img = syneval_dataset[idx][2]
@@ -235,7 +235,8 @@ def get_valid_targets(y_trg, x_segm):
 
 def get_style(nets,y_trg, x_segm):
     x_segm_valid,y_trg_valid = get_valid_targets(y_trg, x_segm)
-    #debugging_photo(x_segm_valid)
+    # if "debug" in args.mode:
+    #     debugging_photo(x_segm_valid)
     x_segm_valid = torch.stack(x_segm_valid).to(device)
     y_trg_valid = torch.stack(y_trg_valid).to(device)
     s_trg = nets.netSE(x_segm_valid, y_trg_valid)
