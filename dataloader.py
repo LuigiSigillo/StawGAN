@@ -151,6 +151,8 @@ class DroneVeichleDataset(Dataset):
 
                     if classes:
                         classes_seg, classes_labels = segmented_classes_extract(split, i, self.img_size, box, infrared=True)
+                        if split =="val":
+                            print(classes_labels)
                         if classes_labels ==[]:
                             continue
                         self.raw_classes.append(classes_seg)
