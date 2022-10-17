@@ -105,7 +105,8 @@ class DroneVeichleDataset(Dataset):
                        colored_data=True,
                        paired_image=False,
                        lab = False,
-                       classes=False
+                       classes=False,
+                       debug = False
                        ):
         super(DroneVeichleDataset, self).__init__()
         
@@ -121,6 +122,8 @@ class DroneVeichleDataset(Dataset):
             list_path = sorted([os.path.join(path1, x) for x in os.listdir(path1)]) + sorted([os.path.join(path2, x) for x in os.listdir(path2)])
             raw_path = [] #contains RGB image real
             # print(len(list_path), list_path[200])
+            if debug:
+                list_path = list_path[:40]
             for x in list_path:
 
                 if split+"imgr" in x:
@@ -153,7 +156,7 @@ class DroneVeichleDataset(Dataset):
                         classes_seg, classes_labels = segmented_classes_extract(split, i, self.img_size, box, infrared=True)
                         if split =="val":
                             print(classes_labels)
-                        if classes_labels ==[]:
+                        if classes_labels == []:
                             continue
                         self.raw_classes.append(classes_seg)
                         self.seg_classes_labels.append(classes_labels)
@@ -742,7 +745,8 @@ from utils import denorm, label2onehot
 def testing_dataset():
     dt = DroneVeichleDataset(split="val", img_size=128, classes=True)
     # dt = ChaosDataset_Syn_new(path="../QWT/TarGAN/datasets/chaos2019")
-    syn_loader = DataLoader(dt, shuffle=False)
+    syn_loader = DataLoader(dt, shuffle=True)
+    print(len(syn_loader))
     for epoch, (x_real, t_img, paired_img, mask, label_org, classes_seg, lab_seg) in enumerate(syn_loader):
     # for epoch, (x_real, paired_img, label_org) in enumerate(syn_loader):
 
@@ -783,7 +787,6 @@ def testing_dataset():
             plt.imshow(denorm(classes_seg)[0][idx].cpu().numpy().transpose(1,2,0))
             plt.title('target image'+str(l_seg[0]))
             plt.savefig('b'+str(idx))
-        if epoch >0:
-            break
-if __name__ == "main":
+
+if __name__ == "__main__":
     testing_dataset()

@@ -56,7 +56,7 @@ if __name__ == '__main__':
     parser.add_argument('-save_every', type=int, default=25)
     parser.add_argument('-logs_every', type=int, default=10)
     parser.add_argument('-eval_every', type=int, default=500)
-    parser.add_argument('-batch_size', type=int, default=4)
+    parser.add_argument('-batch_size', type=int, default=1)
     parser.add_argument('-eval_batch_size', type=int, default=50)
     parser.add_argument('-img_size', type=int, default=256)
     parser.add_argument('-epoch', type=int, default=50)
@@ -101,10 +101,18 @@ if __name__ == '__main__':
     check_errors(args)
     print(args)
     set_deterministic(args.random_seed)
-    if args.mode=="train":
+    if "train" in args.mode:
+        if "debug" in args.mode:
+            args.batch_size = 1
+            args.img_size = 128
+            args.preloaded_data = False
+            args.classes = (True, False)
         if args.dataset=="droneveichle":
             train.train(args)
         else:
             train_kaist.train(args)
-    elif args.mode=="eval":
+    if "eval" in args.mode:
+        if "debug" in args.mode:
+            args.batch_size = 1
         evaluation(args)
+        
