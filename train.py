@@ -229,17 +229,20 @@ def train(args):
                     x_hat = torch.index_select(x_hat, dim=0, index=index)
                     out_src, _, _ = nets.netD_t(x_hat)
                     d_loss_gp_t = gradient_penalty(out_src, x_hat, device)
-
+                    
+                    disc_contr_classes = d_class_loss_cls_t + d_class_loss_f_cls_t if args.classes[0] and not args.classes[1] else torch.tensor(0).to(device)
+                    
                     dt_loss = d_loss_real_t + d_loss_fake_t + d_loss_cls_t + \
-                        d_loss_gp_t * 10 + d_loss_f_cls_t * args.w_d_false_t_c +      d_class_loss_cls_t + d_class_loss_f_cls_t
+                        d_loss_gp_t * 10 + d_loss_f_cls_t * args.w_d_false_t_c +  disc_contr_classes    
                     w_dt = (-d_loss_real_t - d_loss_fake_t).item()
                 else:
                     dt_loss = torch.FloatTensor([0]).to(device)
                     w_dt = 0
                     d_loss_f_cls_t = torch.FloatTensor([0]).to(device)
                 # Backward and optimize.
+                disc_contr_classes = d_class_loss_cls + d_class_loss_f_cls if args.classes[0] and not args.classes[1] else torch.tensor(0).to(device)
                 di_loss = d_loss_real + d_loss_fake + d_loss_cls + \
-                    d_loss_gp * 10 + d_loss_f_cls * args.w_d_false_c +  d_class_loss_cls + d_class_loss_f_cls
+                    d_loss_gp * 10 + d_loss_f_cls * args.w_d_false_c +  disc_contr_classes
 
                 d_loss = di_loss + dt_loss
                 w_di = (-d_loss_real - d_loss_fake).item()
@@ -304,7 +307,7 @@ def train(args):
                     torch.abs(denorm(x_fake) * mask - denorm(t_fake)))
                 # Backward and optimize.
                 gi_loss = g_loss_fake + args.w_cycle * g_loss_rec + \
-                    g_loss_cls * args.w_g_c  +ssim_loss*args.w_ssim +         g_class_loss_cls # + shape_loss* args.w_shape
+                    g_loss_cls * args.w_g_c  +ssim_loss*args.w_ssim +  (g_class_loss_cls if args.classes[0] and not args.classes[1] else torch.tensor(0).to(device)) # + shape_loss* args.w_shape
                 gt_loss = gt_loss + args.w_cycle * g_loss_rec_t + \
                     shape_loss_t * args.w_shape + cross_loss * args.w_g_cross
                 style_comp = 0 if not args.classes[1] else g_style_loss *args.w_shape
