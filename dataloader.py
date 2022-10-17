@@ -766,7 +766,7 @@ def testing_dataset():
         # plt.savefig('test'+str(epoch))
         # plt.show()
 
-        print(lab_seg)
+        #print(lab_seg)
         lab_seg = label2onehot(lab_seg, 6)
 
         for classes, l_seg in zip(classes_seg,lab_seg):
@@ -781,12 +781,13 @@ def testing_dataset():
             
             plt.imshow(denorm(classes)[idx].cpu().numpy().transpose(1,2,0))
             plt.title('target image'+str(idx))
-            plt.savefig('a'+str(epoch))
+            #plt.savefig('a'+str(epoch))
         #assume batch size = 1, show every target even if not exists
         for idx in range(classes_seg.size(1)):
             plt.imshow(denorm(classes_seg)[0][idx].cpu().numpy().transpose(1,2,0))
             plt.title('target image'+str(l_seg[0]))
-            plt.savefig('b'+str(idx))
+            #plt.savefig('b'+str(idx))
 
 if __name__ == "__main__":
-    testing_dataset()
+    print()
+    #testing_dataset()

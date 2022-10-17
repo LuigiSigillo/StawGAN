@@ -293,7 +293,7 @@ def train(args):
                     if args.classes[0] and not args.classes[1]:
                         g_class_loss_cls_t = F.binary_cross_entropy_with_logits(
                             out_class_cls, g_class_trg, reduction='sum') / out_class_cls.size(0)
-                    gt_loss = g_loss_fake_t + g_loss_cls_t * args.w_g_t_c +     g_class_loss_cls_t
+                    gt_loss = g_loss_fake_t + g_loss_cls_t * args.w_g_t_c +     (g_class_loss_cls_t if args.classes[0] and not args.classes[1] else torch.tensor(0).to(device))
                 else:
                     gt_loss = torch.FloatTensor([0]).to(device)
                     g_loss_cls_t = torch.FloatTensor([0]).to(device)
