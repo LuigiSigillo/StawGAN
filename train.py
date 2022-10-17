@@ -35,6 +35,7 @@ def train(args):
         idx = 0
         tensors_path = "/tensors/tensors_paired"
         args.epoch = 10*args.epoch
+        args.save_every = 10*args.save_every
         syn_dataset = DroneVeichleDataset(to_be_loaded=True)
         syn_dataset.load_dataset(path=args.dataset_path+tensors_path, split="train",
                                  idx=str(idx), img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim,lab=args.lab)

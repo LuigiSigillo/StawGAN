@@ -53,7 +53,7 @@ if __name__ == '__main__':
     parser.add_argument('-experiment_name', type=str, default='testing')
     parser.add_argument('-eval_dir', type=str, default='results')
     parser.add_argument('-save_path', type=str, default='checkpoints')
-    parser.add_argument('-save_every', type=int, default=25)
+    parser.add_argument('-save_every', type=int, default=10)
     parser.add_argument('-logs_every', type=int, default=10)
     parser.add_argument('-eval_every', type=int, default=500)
     parser.add_argument('-batch_size', type=int, default=12)
