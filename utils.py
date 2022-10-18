@@ -252,3 +252,42 @@ def debugging_photo(x_segm_valid):
         plt.title('real image')
     
     plt.savefig('test'+str(1))
+
+
+from skimage import color  # used for lab2rgb
+
+def lab2rgb(L, AB):
+    """Convert an Lab tensor image to a RGB numpy output
+    Parameters:
+        L  (1-channel tensor array): L channel images (range: [-1, 1], torch tensor array)
+        AB (2-channel tensor array):  ab channel images (range: [-1, 1], torch tensor array)
+    Returns:
+        rgb (RGB numpy image): rgb output images  (range: [0, 255], numpy array)
+    """
+    AB2 = AB * 110.0
+    L2 = (L + 1.0) * 50.0
+    Lab = torch.cat([L2, AB2], dim=1)
+    Lab = Lab[0].data.cpu().float().numpy()
+    Lab = np.transpose(Lab.astype(np.float64), (1, 2, 0))
+    rgb = color.lab2rgb(Lab) * 255
+    return rgb
+
+from PIL import Image
+from torchvision import transforms
+def rgb2lab(path):
+    """Return a data point and its metadata information.
+    Parameters:
+        index - - a random integer for data indexing
+    Returns a dictionary that contains A, B, A_paths and B_paths
+        A (tensor) - - the L channel of an image
+        B (tensor) - - the ab channels of the same image
+        A_paths (str) - - image paths
+        B_paths (str) - - image paths (same as A_paths)
+    """
+    im = Image.open(path).convert('RGB')
+    im = np.array(im)
+    lab = color.rgb2lab(im).astype(np.float32)
+    lab_t = transforms.ToTensor()(lab)
+    A = lab_t[[0], ...] / 50.0 - 1.0
+    B = lab_t[[1, 2], ...] / 110.0
+    return A,B
