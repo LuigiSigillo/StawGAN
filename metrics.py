@@ -3,6 +3,7 @@ import os
 import random
 import shutil
 from collections import OrderedDict
+import munch
 
 import torch
 from torch import nn
@@ -11,7 +12,8 @@ from tqdm import tqdm
 import torch.nn.functional as F
 import wandb
 from dataloader import DefaultDataset, DroneVeichleDataset
-from utils import getLabel, label2onehot, save_image, save_json
+from models_quat import StyleEncoder
+from utils import get_style, getLabel, label2onehot, save_image, save_json
 from PIL import Image
 
 from models import LPIPS, InceptionV3
@@ -120,7 +122,6 @@ def calculate_SSIM(true, pred):
 
 def calculate_ignite_fid(args):
     from torchmetrics import StructuralSimilarityIndexMeasure
-    ssim = StructuralSimilarityIndexMeasure()
     path_real = [args.dataset_path + "/train/trainimg", args.dataset_path + "/train/trainimgr"]
 
     eval_root = args.eval_dir
@@ -144,12 +145,13 @@ def calculate_ignite_fid(args):
             true = jpg_series_reader(p, pred.shape[0]) 
             x = fid_ignite(true, pred)
             val_is = inception_score_ignite(pred)
-            #val_ssim = ssim(torch.from_numpy(pred).float(), torch.from_numpy(true).float())
+            
+            #to compare to the paired images
             pred = jpg_series_reader(eval_path)
             true = jpg_series_reader(eval_root +"/"+to+"_to_val"+src+"/ground_truth", pred.shape[0]) 
             val_ssim = calculate_SSIM(true/255,pred/255)
             val_psnr = psnr_ignite(true,pred)
-            #pred = jpg_series_reader(eval_path)
+            
             IS_scores["IS-ignite/" + src + " to " +to ] = float(val_is)
             fid_scores["FID-ignite/" + src + " to " + to] = float(x)
             ssim_scores["SSIM/" + src + " to " + to] = float(val_ssim)
@@ -200,7 +202,7 @@ Stargan v2 metrics
 
 
 @torch.no_grad()
-def generate_images_fid(netG, args, mode, eval_dataset_imgr, eval_dataset_img, device):
+def generate_images_fid(netG, args, mode, eval_dataset_imgr, eval_dataset_img, to_get_classes_dataset, device):
     print('Calculating evaluation metrics...')
     domains = ["valimg","valimgr"]
     domains.sort()
@@ -208,14 +210,21 @@ def generate_images_fid(netG, args, mode, eval_dataset_imgr, eval_dataset_img, d
     # calculate_fid_for_all_tasks(args, domains, step=step, mode=mode)
     print('Number of domains: %d' % num_domains)
     loaders = {
-        "valimgr_loader": DataLoader(eval_dataset_imgr, batch_size=args.eval_batch_size),
-        "valimg_loader": DataLoader(eval_dataset_img, batch_size=args.eval_batch_size),
+        "valimgr_loader": DataLoader(eval_dataset_imgr, batch_size=args.eval_batch_size, drop_last=args.classes[0]),
+        "valimg_loader": DataLoader(eval_dataset_img, batch_size=args.eval_batch_size, drop_last=args.classes[0]),
     }
+    if args.classes[0]:
+        dataloader_to_get_classes = iter(DataLoader(to_get_classes_dataset, batch_size=args.eval_batch_size, drop_last=True))
+        domains.reverse()
+        if args.classes[1]:
+            netSE = StyleEncoder(img_size=args.img_size).to(device)
+            ep = str(args.epoch) if not args.preloaded_data else str(args.epoch*10)
+            netSE.load_state_dict(torch.load(args.save_path+"/"+args.experiment_name+"/netSE_"+ep+"_"+args.experiment_name+".pkl", map_location=device))
+
     mod = {"valimgr": 0, "valimg": 1}
 
     # loaders = (syneval_dataset, syneval_dataset2,syneval_dataset3)
     # loaders = (DataLoader(syneval_dataset,batch_size=4), DataLoader(syneval_dataset2,batch_size=4),DataLoader(syneval_dataset3,batch_size=4))
-
     for trg_idx, trg_domain in enumerate(domains):
         src_domains = [x for x in domains if x != trg_domain]
         loader_ref = loaders[trg_domain + "_loader"]
@@ -232,7 +241,7 @@ def generate_images_fid(netG, args, mode, eval_dataset_imgr, eval_dataset_img, d
             #                              img_size=args.image_size,
             #                              batch_size=args.eval_batch_size,
             #                              imagenet_normalize=False)
-            task = '%s_to_%s' % (src_domain, trg_domain)
+            task = '%s_to_%s' % (src_domain, trg_domain) 
             path_fake = os.path.join(args.eval_dir, task)
             path_fake_gt = os.path.join(path_fake,"ground_truth")
             shutil.rmtree(path_fake, ignore_errors=True)
@@ -259,7 +268,29 @@ def generate_images_fid(netG, args, mode, eval_dataset_imgr, eval_dataset_img, d
                 idx = mod[trg_domain]
                 c = getLabel(x_src, device, idx, args.c_dim)
                 # x_src = x_src[:, :1, :, :]
-                x_fake = netG(x_src, None, c, mode='test', wav_type=args.wavelet_type)
+                c_classes_trg, style_trg = None, None
+                if args.classes[0]:
+                    try:
+                        batch = next(dataloader_to_get_classes)
+                    except:
+                        dataloader_to_get_classes = iter(dataloader_to_get_classes)
+                        batch = next(dataloader_to_get_classes)
+                    (x_real, t_img, paired_img, mask, label_org, t_imgs_classes_org, classes_org) = batch
+                    rand_idx_classes = torch.randperm(classes_org.size(0))
+                    classes_trg = classes_org[rand_idx_classes]
+                    c_classes_trg = (label2onehot(classes_trg, 6) - torch.tensor([1,0,0,0,0,0])).to(device)
+                    # c_classes_org = label2onehot(classes_org, 6).to(device)
+                    t_imgs_classes_org = t_imgs_classes_org.to(device)
+                    t_imgs_classes_trg = t_imgs_classes_org[rand_idx_classes].to(device)
+                    if c_classes_trg.size(0) > N:
+                        c_classes_trg = c_classes_trg[:N]
+                if args.classes[1]:
+                    yy_trg, style_trg, x_segm = get_style(munch.Munch({"netSE": netSE}), 
+                                                        y_trg=c_classes_trg, x_segm= t_imgs_classes_trg)  if args.classes[1] else (None, None, None)                
+                    if style_trg.size(0) > N:
+                        style_trg = style_trg[:N]
+                x_fake = netG(x_src, None, c, mode='test', wav_type=args.wavelet_type,
+                                 class_label= c_classes_trg , style=style_trg)
                 group_of_images.append(x_fake)
                 
                 # save generated images to calculate FID later
@@ -441,8 +472,24 @@ def create_images_for_dice_or_s_score(args, netG, idx_eval, syneval_loader, dice
     os.makedirs(args.eval_dir+"/Ground/"+subp)
     output_mae, plotted = 0, 0 
     mae = nn.L1Loss()
+    if args.classes[1]:
+            netSE = StyleEncoder(img_size=args.img_size).to(device)
+            ep = str(args.epoch) if not args.preloaded_data else str(args.epoch*10)
+            netSE.load_state_dict(torch.load(args.save_path+"/"+args.experiment_name+"/netSE_"+ep+"_"+args.experiment_name+".pkl", map_location=device))
     with torch.no_grad():
-        for epoch, (x_real, t_img, shape_mask, mask, label_org) in tqdm(enumerate(syneval_loader), total=len(syneval_loader)):
+        for epoch, batch in tqdm(enumerate(syneval_loader), total=len(syneval_loader)):
+            c_classes_org, style_org = None, None
+            if args.classes[0]:
+                (x_real, t_img, paired_img, mask, label_org, t_imgs_classes_org, classes_org) = batch
+                rand_idx_classes = torch.randperm(classes_org.size(0))
+                classes_trg = classes_org[rand_idx_classes]
+                c_classes_trg = (label2onehot(classes_trg, 6) - torch.tensor([1,0,0,0,0,0])).to(device)
+                c_classes_org = label2onehot(classes_org, 6).to(device)
+                t_imgs_classes_org = t_imgs_classes_org.to(device)
+                t_imgs_classes_trg = t_imgs_classes_org[rand_idx_classes].to(device)
+
+            else:
+                (x_real, t_img, paired_img, mask, label_org) = batch
 
             # label_trg = label_org[rand_idx]
             c_org = label2onehot(label_org, args.c_dim)
@@ -459,14 +506,16 @@ def create_images_for_dice_or_s_score(args, netG, idx_eval, syneval_loader, dice
             # Original-to-target domain.
 
             if not dice_:
-                c_t, x_r, t_i, c_o = [], [], [], []
+                c_t, x_r, t_i, c_o, c_cla, t_i_class = [], [], [], [], [],[]
                 for i, x in enumerate(c_trg):
                     if not torch.all(x.eq(c_org[i])):
                         c_t.append(x)
                         x_r.append(x_real[i])
                         t_i.append(t_img[i])
                         c_o.append(c_org[i])
-
+                        if args.classes[0]:
+                            c_cla.append(c_classes_org[i])
+                            t_i_class.append(t_imgs_classes_org[i])
                     # print(x,c_org[i])
                 if len(c_t) == 0:
                     continue
@@ -474,14 +523,20 @@ def create_images_for_dice_or_s_score(args, netG, idx_eval, syneval_loader, dice
                 x_real = torch.stack(x_r, dim=0).to(device)
                 t_img = torch.stack(t_i, dim=0).to(device)
                 c_org = torch.stack(c_o, dim=0).to(device)
+                if args.classes[0]:
+                    c_classes_org = torch.stack(c_cla, dim=0).to(device)
+                    t_imgs_classes_org = torch.stack(t_i_class, dim=0).to(device)
+
+                if args.classes[1]:
+                    yy_trg, style_org, x_segm = get_style(munch.Munch({"netSE": netSE}),y_trg=c_classes_org, x_segm= t_imgs_classes_org)                
+                
 
             # good for dice
             x_fake, t_fake = netG(x_real, t_img,
-                                        c_trg, wav_type=args.wavelet_type)  # G(image,target_image,target_modality) --> (out_image,output_target_area_image)
-
+                                        c_trg, wav_type=args.wavelet_type, style=style_org, class_label=c_classes_org)  # G(image,target_image,target_modality) --> (out_image,output_target_area_image)
             if not dice_:
                 try:
-                    _, t_reconst = netG(x_fake, t_fake, c_org,wav_type=args.wavelet_type)
+                    _, t_reconst = netG(x_fake, t_fake, c_org,wav_type=args.wavelet_type, style=style_org, class_label=c_classes_org)
                 except:
                     d = args.device
                     args.device = 'cpu'
@@ -571,11 +626,12 @@ def calculate_metrics_segmentation(args, net_G):
 
     for idx in tqdm(range(tot_rep)):
         if args.preloaded_data:
-            syneval_dataset_tot = DroneVeichleDataset(path=args.dataset_path, split='val', colored_data=args.color_images,img_size=args.img_size)
+            syneval_dataset_tot = DroneVeichleDataset(path=args.dataset_path, split='val', colored_data=args.color_images,img_size=args.img_size, classes=args.classes)
             syneval_dataset_tot.load_dataset(path=args.dataset_path+"/tensors/tensors_paired",split="val", idx=str(idx), 
-                                            img_size=args.img_size, colored_data=args.color_images,paired_image=args.loss_ssim)
+                                            img_size=args.img_size, colored_data=args.color_images,paired_image=args.loss_ssim, classes=args.classes)
         else:
-            syneval_dataset_tot = DroneVeichleDataset(path=args.dataset_path, split='val', colored_data=args.color_images,img_size=args.img_size, paired_image=args.loss_ssim)
+            syneval_dataset_tot = DroneVeichleDataset(path=args.dataset_path, split='val', colored_data=args.color_images,img_size=args.img_size,
+                                     paired_image=args.loss_ssim, classes=args.classes)
         syneval_loader = DataLoader(syneval_dataset_tot, shuffle=True, batch_size=args.eval_batch_size)    
 
         for i in tqdm(range(len(mod))):  # 2 domains
@@ -650,11 +706,15 @@ def calculae_metrics_translation(args, net_G):
     if not args.preloaded_data_eval:
         eval_dataset_imgr, eval_dataset_img = DefaultDataset(args.dataset_path+"/val/valimgr"), \
                                             DefaultDataset(args.dataset_path+"/val/valimg")
+        to_get_classes = DroneVeichleDataset(path=args.dataset_path, split='val', colored_data=args.color_images,img_size=args.img_size,
+                                     paired_image=args.loss_ssim, classes=args.classes) if args.classes[0] else None
         generate_images_fid(net_G, args, 'test',
                                         eval_dataset_imgr,
                                         eval_dataset_img,
+                                        to_get_classes,
                                         device
                                         )
+    
     #fid_stargan = calculate_fid_for_all_tasks(args, domains = ["valimg","valimgr"], step=args.epoch*10, mode="stargan")
     fid_dict = calculate_pytorch_fid(args)
     fid_ignite_dict, ssim_dict, psnr_ignite, IS_ignite_dict = calculate_ignite_fid(args)
@@ -679,18 +739,20 @@ def evaluation(args):
     ii = args.sepoch * 650
     in_c = 1 if not args.color_images else 3
     in_c_gen = in_c+4 if args.wavelet_type != None else in_c
+    in_c_gen = 1 if args.lab else in_c_gen
+    in_c_gen = in_c_gen+6 if (args.classes[0] and not args.classes[1]) else in_c_gen
     if not args.real:
         while (in_c_gen + args.c_dim) % 4 != 0: #3+2
             in_c_gen+=1
-    # try:
-    #     from models_quat import Generator
-    #     net_G = Generator(in_c=in_c_gen + args.c_dim, mid_c=args.G_conv, layers=2, s_layers=3, affine=True, last_ac=True,
-    #                         colored_input=args.color_images, wav=args.wavelet_type,real=args.real, qsn=args.qsn, phm=args.phm).to(device)
-    # except:    
-    from models import Generator
-    print("excpetion")
-    net_G = Generator(in_c=in_c_gen + args.c_dim, mid_c=args.G_conv, layers=2, s_layers=3, affine=True, last_ac=True,
-                        colored_input=args.color_images, wav=args.wavelet_type).to(device)
+    try:
+        from models_quat import Generator
+        net_G = Generator(in_c=in_c_gen + args.c_dim, mid_c=args.G_conv, layers=2, s_layers=3, affine=True, last_ac=True,
+                            colored_input=args.color_images, wav=args.wavelet_type,real=args.real, qsn=args.qsn, phm=args.phm, classes=args.classes).to(device)
+    except:    
+        from models import Generator
+        print("Legacy generator")
+        net_G = Generator(in_c=in_c_gen + args.c_dim, mid_c=args.G_conv, layers=2, s_layers=3, affine=True, last_ac=True,
+                            colored_input=args.color_images, wav=args.wavelet_type).to(device)
     ep = str(args.epoch) if not args.preloaded_data else str(args.epoch*10)
     net_G.load_state_dict(torch.load(args.save_path+"/"+args.experiment_name+"/netG_use_"+ep+"_"+args.experiment_name+".pkl", map_location=device))
     with wandb.init(config=args, project="targan_drone") as run:

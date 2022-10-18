@@ -151,9 +151,8 @@ class DroneVeichleDataset(Dataset):
 
                     if classes:
                         classes_seg, classes_labels = segmented_classes_extract(split, i, self.img_size, box, infrared=True)
-                        if split =="val":
-                            print(classes_labels)
                         if classes_labels ==[]:
+                            print(i)
                             continue
                         self.raw_classes.append(classes_seg)
                         self.seg_classes_labels.append(classes_labels)
@@ -183,7 +182,10 @@ class DroneVeichleDataset(Dataset):
                         if classes:
                             classes_seg, classes_labels = segmented_classes_extract(split, i, self.img_size, box)
                             if classes_labels == []:
+                                print(i)
                                 continue
+                            #dataset/val/valimg/01320.jpg
+                            #dataset/val/valimg/01322.jpg
                             self.raw_classes.append(classes_seg)
                             self.seg_classes_labels.append(classes_labels)
 
@@ -785,5 +787,6 @@ def testing_dataset():
             plt.savefig('b'+str(idx))
         if epoch >0:
             break
-if __name__ == "main":
-    testing_dataset()
+if __name__ == "__main__":
+    #testing_dataset()
+    print()
