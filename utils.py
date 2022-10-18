@@ -136,9 +136,9 @@ def moving_average(model, model_test, beta=0.999):
 
 
 
-def plot_images(nets, syneval_dataset, device, c_dim, wavelet_type, lab, classes):
+def plot_images(nets, syneval_dataset, device, c_dim, wavelet_type, lab, classes, debug):
     # fig = plt.figure(dpi=120)
-    idx = random.randint(0,200)
+    idx = random.randint(0,20) if debug else random.randint(0,200)
     with torch.no_grad():
         img = syneval_dataset[idx][0]
         pair_img = syneval_dataset[idx][2]
@@ -150,10 +150,10 @@ def plot_images(nets, syneval_dataset, device, c_dim, wavelet_type, lab, classes
             c_classes_trg = (label2onehot(classes_trg, 6) - torch.tensor([1,0,0,0,0,0])).to(device)
             #classes_org torch.tensor([1,0,0,0,0,0]),([1,1,0,0,0,0])]
             #  ho una macchina al t_imgs_classes[i][0], ho una macchina in t_imgs_classes[i][0] e un truck in t_imgs_classes[i][1] 
-            t_imgs_classes_org = t_imgs_classes_org.to(device)
+            t_imgs_classes_org = t_imgs_classes_org.unsqueeze(0).to(device)
             t_imgs_classes_trg = t_imgs_classes_org[rand_idx_classes].to(device)
             if classes[1]:
-                yy_trg, style_trg, x_segm_valid = get_style(nets,y_trg=c_classes_trg, x_segm= t_imgs_classes_trg.unsqueeze(0).to(device))
+                yy_trg, style_trg, x_segm_valid = get_style(nets,y_trg=c_classes_trg, x_segm= t_imgs_classes_trg)
         img = img.unsqueeze(dim=0).to(device)
         try:
             #trg_segm = syneval_dataset[idx][3]
@@ -235,7 +235,8 @@ def get_valid_targets(y_trg, x_segm):
 
 def get_style(nets,y_trg, x_segm):
     x_segm_valid,y_trg_valid = get_valid_targets(y_trg, x_segm)
-    #debugging_photo(x_segm_valid)
+    # if "debug" in args.mode:
+    #     debugging_photo(x_segm_valid)
     x_segm_valid = torch.stack(x_segm_valid).to(device)
     y_trg_valid = torch.stack(y_trg_valid).to(device)
     s_trg = nets.netSE(x_segm_valid, y_trg_valid)
