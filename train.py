@@ -355,28 +355,28 @@ def train(args):
 
             if (epoch + 1) % 1 == 0 and (epoch + 1) > 0:
                 # show syn images after every epoch
-                try:
-                    x_real, x_infrared, x_rgb, trg_orig, trg_infra_fake, trg_rgb_fake, pair, class_seg = plot_images(
-                        nets, syneval_dataset, device, args.c_dim, args.wavelet_type, args.lab, args.classes, "debug" in args.mode)
-                    wandb.log({"orig": wandb.Image(
-                        x_real, caption="orig_" + str(epoch))}, commit=False)
-                    wandb.log(
-                        {"ir": wandb.Image(x_infrared, caption="ir_" + str(epoch))}, commit=False)
-                    wandb.log(
-                        {"img": wandb.Image(x_rgb, caption="img_" + str(epoch))}, commit=False)
-                    wandb.log({"orig_trg": wandb.Image(
-                        trg_orig, caption="orig_trg_" + str(epoch))}, commit=False)
-                    wandb.log({"ir_trg": wandb.Image(trg_infra_fake,
-                            caption="ir_trg_" + str(epoch))}, commit=False)
-                    wandb.log({"img_trg": wandb.Image(trg_rgb_fake,
-                            caption="img_trg_" + str(epoch))}, commit=False)
-                    wandb.log({"pair": wandb.Image(pair,
-                            caption="pair_" + str(epoch))}, commit=False)
-                    if args.classes[1]:
-                        wandb.log({"class_seg": wandb.Image(class_seg,
-                                caption="class_seg_" + str(epoch))}, commit=False)
-                except Exception as e:
-                    print(e)
+                # try:
+                x_real, x_infrared, x_rgb, trg_orig, trg_infra_fake, trg_rgb_fake, pair, class_seg = plot_images(
+                    nets, syneval_dataset, device, args.c_dim, args.wavelet_type, args.lab, args.classes, "debug" in args.mode)
+                wandb.log({"orig": wandb.Image(
+                    x_real, caption="orig_" + str(epoch))}, commit=False)
+                wandb.log(
+                    {"ir": wandb.Image(x_infrared, caption="ir_" + str(epoch))}, commit=False)
+                wandb.log(
+                    {"img": wandb.Image(x_rgb, caption="img_" + str(epoch))}, commit=False)
+                wandb.log({"orig_trg": wandb.Image(
+                    trg_orig, caption="orig_trg_" + str(epoch))}, commit=False)
+                wandb.log({"ir_trg": wandb.Image(trg_infra_fake,
+                        caption="ir_trg_" + str(epoch))}, commit=False)
+                wandb.log({"img_trg": wandb.Image(trg_rgb_fake,
+                        caption="img_trg_" + str(epoch))}, commit=False)
+                wandb.log({"pair": wandb.Image(pair,
+                        caption="pair_" + str(epoch))}, commit=False)
+                if args.classes[1]:
+                    wandb.log({"class_seg": wandb.Image(class_seg,
+                            caption="class_seg_" + str(epoch))}, commit=False)
+                # except Exception as e:
+                #     print(e)
                 # raise Exception
 
             if (epoch + 1) % args.save_every == 0:

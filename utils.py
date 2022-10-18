@@ -172,13 +172,14 @@ def plot_images(nets, syneval_dataset, device, c_dim, wavelet_type, lab, classes
                                                 wav_type=wavelet_type, style=None if not classes[1] else style_trg, class_label=c_classes_trg if classes[0] and not classes[1] else None)
 
     if lab:
-        return (K.color.lab_to_rgb(img.cpu())), \
-        (K.color.lab_to_rgb(pred_t1_img.cpu())), \
-        (K.color.lab_to_rgb(pred_t2_img.cpu())), \
-        K.color.lab_to_rgb(trg_orig.cpu()), \
-        K.color.lab_to_rgb(pred_t1_targ.cpu()), \
-        K.color.lab_to_rgb(pred_t2_targ.cpu()), \
-        (K.color.lab_to_rgb(pair_img.cpu()))
+        return (lab2rgb(img.cpu()[:,:1],img.cpu()[:,1:] )), \
+        (lab2rgb(pred_t1_img.cpu()[:,:1],pred_t1_img.cpu()[:,1:])), \
+        (lab2rgb(pred_t2_img.cpu()[:,:1],pred_t2_img.cpu()[:,1:])), \
+        lab2rgb(trg_orig.cpu()[:,:1],trg_orig.cpu()[:,1:]), \
+        lab2rgb(pred_t1_targ.cpu()[:,:1],pred_t1_targ.cpu()[:,1:]), \
+        lab2rgb(pred_t2_targ.cpu()[:,:1],pred_t2_targ.cpu()[:,1:]), \
+        (lab2rgb(pair_img.unsqueeze(0).cpu()[:,:1],pair_img.unsqueeze(0).cpu()[:,1:])), \
+        lab2rgb(x_segm_valid.cpu()[:,:1],x_segm_valid.cpu()[:,1:]) if classes[1] else None
 
     return denorm(img).cpu(), \
             denorm(pred_t1_img).cpu(), \
@@ -260,10 +261,15 @@ def lab2rgb(L, AB):
     """Convert an Lab tensor image to a RGB numpy output
     Parameters:
         L  (1-channel tensor array): L channel images (range: [-1, 1], torch tensor array)
-        AB (2-channel tensor array):  ab channel images (range: [-1, 1], torch tensor array)
+        AB (2-channel tensor array):  ab channel images (range: [-1, 1], torch tensor arrqay)
     Returns:
         rgb (RGB numpy image): rgb output images  (range: [0, 255], numpy array)
     """
+    # print(L.shape)
+    # if len(L.shape)>2:
+    #     L.squeeze()
+    #     AB.squeeze()
+    # print(L.shape)
     AB2 = AB * 110.0
     L2 = (L + 1.0) * 50.0
     Lab = torch.cat([L2, AB2], dim=1)
@@ -274,20 +280,23 @@ def lab2rgb(L, AB):
 
 from PIL import Image
 from torchvision import transforms
-def rgb2lab(path):
+def rgb2lab(img_tensor=None, path=None):
     """Return a data point and its metadata information.
     Parameters:
-        index - - a random integer for data indexing
+
     Returns a dictionary that contains A, B, A_paths and B_paths
         A (tensor) - - the L channel of an image
         B (tensor) - - the ab channels of the same image
         A_paths (str) - - image paths
         B_paths (str) - - image paths (same as A_paths)
     """
-    im = Image.open(path).convert('RGB')
-    im = np.array(im)
+    if path is not None:
+        im = Image.open(path).convert('RGB')
+        im = np.array(im)
+    else:
+        im = img_tensor.numpy().transpose(1,2,0)
     lab = color.rgb2lab(im).astype(np.float32)
     lab_t = transforms.ToTensor()(lab)
-    A = lab_t[[0], ...] / 50.0 - 1.0
-    B = lab_t[[1, 2], ...] / 110.0
-    return A,B
+    L = lab_t[[0], ...] / 50.0 - 1.0
+    ab = lab_t[[1, 2], ...] / 110.0
+    return torch.cat([L,ab], dim=0)

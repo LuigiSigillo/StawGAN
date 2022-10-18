@@ -12,6 +12,7 @@ import torchvision as tv
 import random 
 from tqdm import tqdm
 from torchvision import transforms
+from utils import denorm, label2onehot, rgb2lab
 
 import kornia as K
 
@@ -253,13 +254,13 @@ class DroneVeichleDataset(Dataset):
                 if self.classes:
                     seg_classes = [cv2.flip(class_seg, 1) for class_seg in seg_classes]
                     t_imgs_classes = [cv2.flip(t_imgs_class,1) for t_imgs_class in t_imgs_classes]
-        if self.lab:
-            img = img/255
-            t_img = t_img/255
-            paired_img = paired_img/255
-            if self.classes:
-                t_imgs_classes = [t_imgs_class/255 for t_imgs_class in t_imgs_classes]
-        else:
+        # if self.lab:
+        #     img = img/255
+        #     t_img = t_img/255
+        #     paired_img = paired_img/255
+        #     if self.classes:
+        #         t_imgs_classes = [t_imgs_class/255 for t_imgs_class in t_imgs_classes]
+        if not self.lab:
             # scale to [-1,1]
             img = (img - 0.5) / 0.5
             t_img = (t_img - 0.5) / 0.5
@@ -269,20 +270,20 @@ class DroneVeichleDataset(Dataset):
         if len(img.shape)>2:
             img, t_img, paired_img, seg_mask, class_label, t_imgs_classes = self.get_item_rgb(img, t_img, paired_img, seg_mask, class_label,t_imgs_classes if t_imgs_classes is not [] else None)
             if self.lab:
-                img = K.color.rgb_to_lab(img)
-                t_img = K.color.rgb_to_lab(t_img)
-                paired_img = K.color.rgb_to_lab(paired_img)
+                img = rgb2lab(img)
+                t_img = rgb2lab(t_img)
+                paired_img = rgb2lab(paired_img)
                 if self.classes:
-                    t_imgs_classes = [K.color.rgb_to_lab(t_imgs_class) for t_imgs_class in t_imgs_classes]
+                    t_imgs_classes = [rgb2lab(t_imgs_class) for t_imgs_class in t_imgs_classes]
                 
         else:
             img, t_img, paired_img, seg_mask, class_label, t_imgs_classes = self.get_item_grey(img, t_img, paired_img, seg_mask, class_label, t_imgs_classes if t_imgs_classes is not [] else None)
             if self.lab:
-                img = K.color.rgb_to_lab(img)
-                t_img = K.color.rgb_to_lab(t_img)
-                paired_img = K.color.rgb_to_lab(paired_img)
+                img = rgb2lab(img)
+                t_img = rgb2lab(t_img)
+                paired_img = rgb2lab(paired_img)
                 if self.classes:
-                    t_imgs_classes = [K.color.rgb_to_lab(t_imgs_class) for t_imgs_class in t_imgs_classes]
+                    t_imgs_classes = [rgb2lab(t_imgs_class) for t_imgs_class in t_imgs_classes]
         
         if self.classes:
             seg_labels = [torch.from_numpy(lab) for lab in seg_labels]
@@ -675,8 +676,8 @@ class KAISTDataset(Dataset):
             img = torch.from_numpy(img).type(torch.FloatTensor).permute(2, 0, 1)
             paired_img = torch.from_numpy(paired_img).type(torch.FloatTensor).permute(2, 0, 1) if len(paired_img.shape) ==3 else \
                             torch.from_numpy(paired_img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
-            img=K.color.rgb_to_lab(img)
-            paired_img = K.color.rgb_to_lab(paired_img)
+            img=rgb2lab(img)
+            paired_img = rgb2lab(paired_img)
         return img, \
             paired_img, \
             torch.from_numpy(class_label).type(torch.FloatTensor)
@@ -743,7 +744,6 @@ class KAISTDataset(Dataset):
         out = (out - out.min()) / (out.max() - out.min())
 
         return out
-from utils import denorm, label2onehot
 def testing_dataset():
     dt = DroneVeichleDataset(split="val", img_size=128, classes=True)
     # dt = ChaosDataset_Syn_new(path="../QWT/TarGAN/datasets/chaos2019")

@@ -391,7 +391,7 @@ class Generator(nn.Module):
         if wav_type != None:
             img = torch.cat([img, create_wavelet_from_input_tensor(img, c, wav_type)], dim=1)
         if self.lab:
-            img = img[:,:1,:,:]
+            img = torch.cat([img[:,:1,:,:], c],dim=1)
         elif self.classes[0] and not self.classes[1]:
             img = torch.cat([img, c, class_label], dim=1)
         else:
@@ -415,7 +415,7 @@ class Generator(nn.Module):
             res_img = torch.tanh(res_img)
         if mode == "train":
             if self.lab:
-                tumor = tumor[:,:1,:,:]
+                tumor = torch.cat([tumor[:,:1,:,:],c],dim=1)
             elif self.classes[0] and not self.classes[1]:
                 tumor = torch.cat([tumor, c, class_label], dim=1)
             else:
