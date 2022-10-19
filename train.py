@@ -305,7 +305,7 @@ def train(args):
                 shape_loss_t = F.mse_loss(nets.netH(t_fake), mask.float())
                 g_loss_rec_t = torch.mean(torch.abs(t_img - t_reconst))
                 cross_loss = torch.mean(
-                    torch.abs(denorm(x_fake) * mask - denorm(t_fake)))
+                    torch.abs((denorm(x_fake) if not args.lab else x_fake) * mask - (denorm(t_fake) if not args.lab else t_fake)))
                 # Backward and optimize.
                 gi_loss = g_loss_fake + args.w_cycle * g_loss_rec + \
                     g_loss_cls * args.w_g_c  +ssim_loss*args.w_ssim +  (g_class_loss_cls if args.classes[0] and not args.classes[1] else torch.tensor(0).to(device)) # + shape_loss* args.w_shape
