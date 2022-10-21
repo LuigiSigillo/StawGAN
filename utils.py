@@ -153,7 +153,7 @@ def plot_images(nets, syneval_dataset, device, c_dim, wavelet_type, lab, classes
             t_imgs_classes_org = t_imgs_classes_org.unsqueeze(0).to(device)
             t_imgs_classes_trg = t_imgs_classes_org[rand_idx_classes].to(device)
             if classes[1]:
-                yy_trg, style_trg, x_segm_valid = get_style(nets,y_trg=c_classes_trg, x_segm= t_imgs_classes_trg)
+                yy_trg, style_trg, x_segm_valid = get_style(nets,y_trg=c_classes_trg, x_segm= t_imgs_classes_trg, x_real=img.unsqueeze(0).to(device))
         img = img.unsqueeze(dim=0).to(device)
         try:
             #trg_segm = syneval_dataset[idx][3]
@@ -234,13 +234,17 @@ def get_valid_targets(y_trg, x_segm):
         #yy_trg = onehot2label(yy_trg.unsqueeze(0)).squeeze(0).long()
     return x_segm_valid,y_trg_valid
 
-def get_style(nets,y_trg, x_segm):
+def get_style(nets,y_trg, x_segm, x_real=None):
     x_segm_valid,y_trg_valid = get_valid_targets(y_trg, x_segm)
     # if "debug" in args.mode:
     #     debugging_photo(x_segm_valid)
     x_segm_valid = torch.stack(x_segm_valid).to(device)
     y_trg_valid = torch.stack(y_trg_valid).to(device)
-    s_trg = nets.netSE(x_segm_valid, y_trg_valid)
+    if x_real is not None:
+        s_trg = nets.netSE(x_real, y_trg_valid) #changed
+    else:
+        s_trg = nets.netSE(x_segm_valid, y_trg_valid) #changed
+
     return y_trg_valid, s_trg, x_segm_valid
 
 

@@ -310,8 +310,9 @@ class Discriminator(nn.Module):
             out_class_seg = self.conv3(h)
         # print("discriminatore out src",out_src.shape) #torch.Size([4, 1, 2, 2])
         # print("discriminatore out cls",out_cls.shape, "view",out_cls.view(out_cls.size(0), out_cls.size(1)).shape) #torch.Size([4, 6, 1, 1]) view torch.Size([4, 6])
-        return out_src, out_cls.view(out_cls.size(0), out_cls.size(1)), \
-                out_class_seg.view(out_class_seg.size(0), out_class_seg.size(1)) if self.classes[0] and not self.classes[1] else out_cls
+        return out_src, \
+               out_cls.view(out_cls.size(0), out_cls.size(1)), \
+               out_class_seg.view(out_class_seg.size(0),out_class_seg.size(1)) if self.classes[0] and not self.classes[1] else out_cls
 
 
 

@@ -487,6 +487,8 @@ def create_images_for_dice_or_s_score(args, netG, idx_eval, syneval_loader, dice
                 c_classes_org = label2onehot(classes_org, 6).to(device)
                 t_imgs_classes_org = t_imgs_classes_org.to(device)
                 t_imgs_classes_trg = t_imgs_classes_org[rand_idx_classes].to(device)
+                yy_org, style_org, x_segm = get_style(munch.Munch({"netSE": netSE}),y_trg=c_classes_trg, x_segm= t_imgs_classes_trg) if args.classes[1] else ( None, None, None)
+
 
             else:
                 (x_real, t_img, paired_img, mask, label_org) = batch
@@ -529,7 +531,6 @@ def create_images_for_dice_or_s_score(args, netG, idx_eval, syneval_loader, dice
 
                 if args.classes[1]:
                     yy_trg, style_org, x_segm = get_style(munch.Munch({"netSE": netSE}),y_trg=c_classes_org, x_segm= t_imgs_classes_org)                
-                
 
             # good for dice
             x_fake, t_fake = netG(x_real, t_img,
@@ -626,14 +627,13 @@ def calculate_metrics_segmentation(args, net_G):
 
     for idx in tqdm(range(tot_rep)):
         if args.preloaded_data:
-            syneval_dataset_tot = DroneVeichleDataset(path=args.dataset_path, split='val', colored_data=args.color_images,img_size=args.img_size, classes=args.classes)
+            syneval_dataset_tot = DroneVeichleDataset(path=args.dataset_path, split='val', colored_data=args.color_images,img_size=args.img_size, classes=args.classes[0])
             syneval_dataset_tot.load_dataset(path=args.dataset_path+"/tensors/tensors_paired",split="val", idx=str(idx), 
-                                            img_size=args.img_size, colored_data=args.color_images,paired_image=args.loss_ssim, classes=args.classes)
+                                            img_size=args.img_size, colored_data=args.color_images,paired_image=args.loss_ssim, classes=args.classes[0], lab=args.lab)
         else:
-            syneval_dataset_tot = DroneVeichleDataset(path=args.dataset_path, split='val', colored_data=args.color_images,img_size=args.img_size,
-                                     paired_image=args.loss_ssim, classes=args.classes)
+            syneval_dataset_tot = DroneVeichleDataset(path=args.dataset_path, split='val', img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim, lab=args.lab, 
+                                                        classes=args.classes[0],    debug = "debug" in args.mode)
         syneval_loader = DataLoader(syneval_dataset_tot, shuffle=True, batch_size=args.eval_batch_size)    
-
         for i in tqdm(range(len(mod))):  # 2 domains
             # ======= Directories =======
             ground_dir = os.path.normpath(args.eval_dir+'/Ground/dice')
@@ -719,7 +719,7 @@ def calculae_metrics_translation(args, net_G):
     fid_dict = calculate_pytorch_fid(args)
     fid_ignite_dict, ssim_dict, psnr_ignite, IS_ignite_dict = calculate_ignite_fid(args)
     #IS_ignite_dict = calculate_ignite_inception_score(args)
-    
+    #print(ssim_dict, fid_dict, IS_ignite_dict, fid_ignite_dict ,psnr_ignite)
     return ssim_dict, fid_dict, IS_ignite_dict, fid_ignite_dict ,psnr_ignite
 
 
@@ -747,7 +747,7 @@ def evaluation(args):
     try:
         from models_quat import Generator
         net_G = Generator(in_c=in_c_gen + args.c_dim, mid_c=args.G_conv, layers=2, s_layers=3, affine=True, last_ac=True,
-                            colored_input=args.color_images, wav=args.wavelet_type,real=args.real, qsn=args.qsn, phm=args.phm, classes=args.classes).to(device)
+                            colored_input=args.color_images, wav=args.wavelet_type,real=args.real, qsn=args.qsn, phm=args.phm, classes=args.classes, lab=args.lab).to(device)
     except:    
         from models import Generator
         print("Legacy generator")

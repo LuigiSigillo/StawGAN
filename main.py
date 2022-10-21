@@ -55,7 +55,7 @@ if __name__ == '__main__':
     parser.add_argument('-save_path', type=str, default='checkpoints')
     parser.add_argument('-save_every', type=int, default=10)
     parser.add_argument('-logs_every', type=int, default=10)
-    parser.add_argument('-eval_every', type=int, default=500)
+    parser.add_argument('-eval_every', type=int, default=50)
     parser.add_argument('-batch_size', type=int, default=12)
     parser.add_argument('-eval_batch_size', type=int, default=50)
     parser.add_argument('-img_size', type=int, default=256)
