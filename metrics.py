@@ -141,14 +141,14 @@ def calculate_ignite_fid(args):
  
             print("evaluating " + src + " to " + to)
             print("path predictions:", eval_path, "\n path true:", p)
-            pred = jpg_series_reader(eval_path)
-            true = jpg_series_reader(p, pred.shape[0]) 
+            pred = jpg_series_reader(args.img_size, eval_path)
+            true = jpg_series_reader(args.img_size, p, pred.shape[0]) 
             x = fid_ignite(true, pred)
             val_is = inception_score_ignite(pred)
             
             #to compare to the paired images
-            pred = jpg_series_reader(eval_path)
-            true = jpg_series_reader(eval_root +"/"+to+"_to_val"+src+"/ground_truth", pred.shape[0]) 
+            pred = jpg_series_reader(args.img_size,eval_path)
+            true = jpg_series_reader(args.img_size,eval_root +"/"+to+"_to_val"+src+"/ground_truth", pred.shape[0]) 
             val_ssim = calculate_SSIM(true/255,pred/255)
             val_psnr = psnr_ignite(true,pred)
             
@@ -188,7 +188,7 @@ def calculate_ignite_inception_score(args):
                 eval_path = eval_root +"/val"+ src + "_to_valimg" 
                 to = "valimg"
             print("evaluating " + src + " to " + to)
-            pred = jpg_series_reader(eval_path)
+            pred = jpg_series_reader(args.img_size,eval_path)
             x = inception_score_ignite(pred)
             fid_scores["IS-ignite/" + src + " to " +to ] = float(x)
             ls += float(x)
@@ -444,7 +444,7 @@ def png_series_reader(dir):
     #V = V.astype(bool)
     return V
 
-def jpg_series_reader(dir, mlen=None):
+def jpg_series_reader(img_size,dir, mlen=None):
     V = []
     jpg_file_list = glob.glob(dir + '/*.jpg')
     png_file_list = glob.glob(dir + '/*.png')
@@ -453,10 +453,11 @@ def jpg_series_reader(dir, mlen=None):
     box = (100, 100, 740, 612)
     if mlen!=None:
         tot_list = tot_list[:mlen]
-    for filename in tqdm(tot_list):
+    for filename in tqdm(tot_list[:1469]): #changed
         img = Image.open(filename).convert("RGB")
-        img = img.crop(box)
-        img = img.resize((256, 256))
+        if "train" in dir:
+            img = img.crop(box)
+        img = img.resize((img_size, img_size))
         img = np.asarray(img)
         V.append(img.transpose(2, 0, 1))
     V = np.array(V, order='A')
@@ -730,6 +731,7 @@ def calculate_all_metrics(args, net_G, device="cuda" if torch.cuda.is_available(
     os.makedirs(args.eval_dir, exist_ok=True)
 
     ssim_dict, fid_dict, IS_ignite_dict, fid_ignite_dict ,psnr_ignite = calculae_metrics_translation(args, net_G)
+    print(ssim_dict, fid_dict, IS_ignite_dict, fid_ignite_dict ,psnr_ignite)
     dice_dict, s_score_dict, iou_dict, mae_dict = calculate_metrics_segmentation(args, net_G)
     return psnr_ignite, fid_dict, dice_dict, s_score_dict, iou_dict, IS_ignite_dict, fid_ignite_dict, mae_dict, ssim_dict
 
