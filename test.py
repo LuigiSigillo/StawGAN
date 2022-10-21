@@ -1,8 +1,8 @@
-# from PIL import Image
+from PIL import Image
 # import torchvision as tv
 # import kornia as K
 # import torch
-# import numpy as np
+import numpy as np
 # import sys
 # import cv2
 
@@ -13,9 +13,9 @@
 
 # # import matplotlib.pyplot as plt
 # # grayscale = tv.transforms.Grayscale(num_output_channels=1)
-# # image = Image.open('dataset/train/trainimg/00001.jpg')
-# # imager = Image.open('dataset/train/trainimgr/00001.jpg')
-
+image = Image.open('dataset/train/trainimg/00001.jpg')
+imager = Image.open('dataset/train/trainimgr/00001.jpg').convert("RGB")
+print(np.array(imager))
 
 # # color_palette = [(255,0,0), (128,0,128), (0,192,0), (0,100,0), (200,200,0)]
 # # dict_palette = {"car":color_palette[0], 
@@ -71,7 +71,7 @@
 # #     print("blac")
 # # im = torch.tensor(np.asarray(image))
 # # im = im.permute(2,0,1)
-# # lab_image = K.color.rgb_to_lab(im/255.0)
+# # lab_image = rgb2lab(im/255.0)
 # # lab_img_np = lab_image.numpy().transpose(1,2,0)
 # # print(image.size) # Output: (1920, 1280)
 # # #cropped_image = image.resize((640, 512))
@@ -94,7 +94,7 @@
 # # plt.imshow(img_np[:,:,2]/255.0, )
 # # plt.subplot(254)
 # # plt.imshow(img_np, )
-# # rgbr = K.color.lab_to_rgb(lab_image)
+# # rgbr = lab2rgb(lab_image)
 # # img_np_rgb = rgbr.numpy().transpose(1,2,0)
 
 # # print(rgbr.shape)

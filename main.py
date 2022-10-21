@@ -106,7 +106,6 @@ if __name__ == '__main__':
             args.batch_size = 1
             args.img_size = 128
             args.preloaded_data = False
-            args.classes = (True, False)
         if args.dataset=="droneveichle":
             train.train(args)
         else:
