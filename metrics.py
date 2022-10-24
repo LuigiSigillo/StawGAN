@@ -286,7 +286,7 @@ def generate_images_fid(netG, args, mode, eval_dataset_imgr, eval_dataset_img, t
                         c_classes_trg = c_classes_trg[:N]
                 if args.classes[1]:
                     yy_trg, style_trg, x_segm = get_style(munch.Munch({"netSE": netSE}), 
-                                                        y_trg=c_classes_trg, x_segm= t_imgs_classes_trg)  if args.classes[1] else (None, None, None)                
+                                                        y_trg=c_classes_trg, x_segm= t_imgs_classes_trg, x_real=x_real if args.classes_image else None)  if args.classes[1] else (None, None, None)                
                     if style_trg.size(0) > N:
                         style_trg = style_trg[:N]
                 x_fake = netG(x_src, None, c, mode='test', wav_type=args.wavelet_type,
@@ -488,7 +488,7 @@ def create_images_for_dice_or_s_score(args, netG, idx_eval, syneval_loader, dice
                 c_classes_org = label2onehot(classes_org, 6).to(device)
                 t_imgs_classes_org = t_imgs_classes_org.to(device)
                 t_imgs_classes_trg = t_imgs_classes_org[rand_idx_classes].to(device)
-                yy_org, style_org, x_segm = get_style(munch.Munch({"netSE": netSE}),y_trg=c_classes_trg, x_segm= t_imgs_classes_trg) if args.classes[1] else ( None, None, None)
+                yy_org, style_org, x_segm = get_style(munch.Munch({"netSE": netSE}),y_trg=c_classes_trg, x_segm= t_imgs_classes_trg, x_real=x_real if args.classes_image else None) if args.classes[1] else ( None, None, None)
 
 
             else:
@@ -531,7 +531,7 @@ def create_images_for_dice_or_s_score(args, netG, idx_eval, syneval_loader, dice
                     t_imgs_classes_org = torch.stack(t_i_class, dim=0).to(device)
 
                 if args.classes[1]:
-                    yy_trg, style_org, x_segm = get_style(munch.Munch({"netSE": netSE}),y_trg=c_classes_org, x_segm= t_imgs_classes_org)                
+                    yy_trg, style_org, x_segm = get_style(munch.Munch({"netSE": netSE}),y_trg=c_classes_org, x_segm= t_imgs_classes_org, x_real=x_real if args.classes_image else None)                
 
             # good for dice
             x_fake, t_fake = netG(x_real, t_img,

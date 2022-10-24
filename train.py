@@ -175,7 +175,7 @@ def train(args):
                 
                 # Compute loss with fake whole images.
                 with torch.no_grad():
-                    yy_trg, style_trg, x_segm = get_style(nets,y_trg=c_classes_trg, x_segm= t_imgs_classes_trg, x_real=x_real)  if args.classes[1] else (None, None, None)
+                    yy_trg, style_trg, x_segm = get_style(nets,y_trg=c_classes_trg, x_segm= t_imgs_classes_trg, x_real=x_real if args.classes_image else None)  if args.classes[1] else (None, None, None)
 
                     x_fake, t_fake = nets.netG(x_real, t_img, c_trg, wav_type=args.wavelet_type, style=style_trg,  class_label=c_classes_trg if (args.classes[0] and not args.classes[1]) else None)
                 # plt.imshow(  x_fake[2].cpu().detach().permute(1, 2, 0).numpy(), cmap='gray')
@@ -269,7 +269,7 @@ def train(args):
                         out_class_cls, g_class_trg, reduction='sum') / out_class_cls.size(0)
 
                 # Target-to-original domain.
-                yy_org, style_org, x_segm = get_style(nets,y_trg=c_classes_org, x_segm= t_imgs_classes_org, x_real=x_real) if args.classes[1] else ( None, None, None)
+                yy_org, style_org, x_segm = get_style(nets,y_trg=c_classes_org, x_segm= t_imgs_classes_org, x_real=x_real if args.classes_image else None) if args.classes[1] else ( None, None, None)
 
                 x_reconst, t_reconst = nets.netG(x_fake, t_fake, c_org, wav_type=args.wavelet_type, style=style_org, class_label=c_classes_org if (args.classes[0] and not args.classes[1]) else None)
                 g_loss_rec = torch.mean(torch.abs(x_real - x_reconst))
@@ -457,7 +457,7 @@ def compute_g_loss(nets, args, x_real, t_img, c_trg, y_trg, x_segm=None, c_class
     # estrapolo lo style code dalla immagine segmentata/quella intera?
     # gli passo anche la label target (quindi se é car car?)
 
-    yy_trg, s_trg, x_segm_valid = get_style(nets=nets, x_segm=x_segm, y_trg=y_trg, x_real=x_real)
+    yy_trg, s_trg, x_segm_valid = get_style(nets=nets, x_segm=x_segm, y_trg=y_trg, x_real=x_real if args.classes_image else None)
     #genero l immagine fake passandogli la segmentate/reale di un truck con lo stylecode della car
     x_fake, t_fake = nets.netG(x_real, t_img, c_trg, style = s_trg, wav_type=args.wavelet_type)
     

@@ -67,6 +67,8 @@ if __name__ == '__main__':
     parser.add_argument("-color_images", type=str2bool, nargs='?', const=True, default=True, help="Activate nice mode.")
     parser.add_argument("-lab", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
     parser.add_argument("-classes", type=tuple_type, default=(False, False)) #first if injected second if style extracted
+    parser.add_argument("-classes_image", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.") #first if injected second if style extracted
+
     parser.add_argument('-wavelet_type', type=str,default=None) #real or quat
     parser.add_argument("-loss_ssim", type=str2bool, nargs='?', const=True, default=True, help="Activate nice mode.")
     parser.add_argument('-w_ssim', type=float, default=1)
