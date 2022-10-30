@@ -148,7 +148,7 @@ def calculate_ignite_fid(args):
             
             #to compare to the paired images
             pred = jpg_series_reader(args.img_size,eval_path)
-            true = jpg_series_reader(args.img_size,eval_root +"/"+to+"_to_val"+src+"/ground_truth", pred.shape[0]) 
+            true = jpg_series_reader(args.img_size,eval_root +"/"+to+"_to_val"+src+"/ground_truth", pred.shape[0])
             val_ssim = calculate_SSIM(true/255,pred/255)
             val_psnr = psnr_ignite(true,pred)
             
@@ -455,7 +455,7 @@ def jpg_series_reader(img_size,dir, mlen=None):
         tot_list = tot_list[:mlen]
     for filename in tqdm(tot_list[:1469]): #changed
         img = Image.open(filename).convert("RGB")
-        if "train" in dir:
+        if "train" in dir or img.size[0] != img_size:
             img = img.crop(box)
         img = img.resize((img_size, img_size))
         img = np.asarray(img)
