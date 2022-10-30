@@ -726,7 +726,7 @@ def calculae_metrics_translation(args, net_G):
 
 
 
-def calculate_all_metrics(args, net_G, device="cuda" if torch.cuda.is_available() else "cpu"):
+def calculate_all_metrics(args, net_G):
     args.eval_dir=os.path.join(args.eval_dir, args.experiment_name)
     os.makedirs(args.eval_dir, exist_ok=True)
 

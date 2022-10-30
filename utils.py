@@ -136,9 +136,9 @@ def moving_average(model, model_test, beta=0.999):
 
 
 
-def plot_images(nets, syneval_dataset, device, c_dim, wavelet_type, lab, classes, debug):
+def plot_images(nets, syneval_dataset, device, c_dim, wavelet_type, lab, classes, debug, single_mod):
     # fig = plt.figure(dpi=120)
-    idx = random.randint(0,20) if debug else random.randint(1460,1485)
+    idx = random.randint(0,20) if debug or single_mod else random.randint(1460,1485)
     with torch.no_grad():
         img = syneval_dataset[idx][0]
         pair_img = syneval_dataset[idx][2]

@@ -11,6 +11,7 @@ import copy
 import torch.nn.functional as F
 from tqdm import tqdm
 import munch
+
 import torchgeometry as tgm
 
 device = torch.device("cpu")
@@ -23,14 +24,33 @@ def train(args):
 
     # set_seed(args.random_seed)
     if not args.preloaded_data:
-        syn_dataset = DroneVeichleDataset(
-            path=args.dataset_path, split='train', img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim, lab=args.lab, classes=args.classes[0],
-            debug = "debug" in args.mode)
-        syn_loader = DataLoader(
-            syn_dataset, batch_size=args.batch_size, shuffle=True,)
-        syneval_dataset = DroneVeichleDataset(
-            path=args.dataset_path, split='val', img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim, lab=args.lab, classes=args.classes[0],
-            debug = "debug" in args.mode)
+        # if not args.single_mod:
+            syn_dataset = DroneVeichleDataset(
+                path=args.dataset_path, split='train', img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim, lab=args.lab, 
+                classes=args.classes[0], single_mod=(args.single_mod, 'ir' if 'ir' in args.experiment_name else 'rgb'),debug = "debug" in args.mode, remove_dark=args.remove_dark_samples)
+            syn_loader = DataLoader(
+                syn_dataset, batch_size=args.batch_size, shuffle=True,)
+            syneval_dataset = DroneVeichleDataset(
+                path=args.dataset_path, split='val', img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim, lab=args.lab,
+                classes=args.classes[0], single_mod=(args.single_mod, 'ir' if 'ir' in args.experiment_name else 'rgb'), debug = "debug" in args.mode,remove_dark=args.remove_dark_samples)
+        # else:
+            # syn_dataset = DroneVeichleDataset(
+            #     path=args.dataset_path, split='train', img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim, lab=args.lab, classes=args.classes[0], single_mod=(args.single_mod, 'ir'),
+            #     debug = "debug" in args.mode)
+            # syn_loader = DataLoader(
+            #     syn_dataset, batch_size=args.batch_size, shuffle=True,)
+            # syneval_dataset = DroneVeichleDataset(
+            #     path=args.dataset_path, split='val', img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim, lab=args.lab, classes=args.classes[0], single_mod=(args.single_mod, 'ir'),
+            #     debug = "debug" in args.mode)
+            
+            # syn_dataset2 = DroneVeichleDataset(
+            #     path=args.dataset_path, split='train', img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim, lab=args.lab, classes=args.classes[0], single_mod=(args.single_mod, 'rgb'),
+            #     debug = "debug" in args.mode)
+            # syn_loader2 = DataLoader(
+            #     syn_dataset, batch_size=args.batch_size, shuffle=True,)
+            # syneval_dataset2 = DroneVeichleDataset(
+            #     path=args.dataset_path, split='val', img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim, lab=args.lab, classes=args.classes[0], single_mod=(args.single_mod, 'rgb'),
+            #     debug = "debug" in args.mode)
     else:
         idx = 0
         tensors_path = "/tensors/tensors_paired"
@@ -70,6 +90,7 @@ def train(args):
                         "netSE": StyleEncoder(img_size=args.img_size).to(device) if args.classes[1] else None,
                         "netD_style" : DiscriminatorStyle(img_size=args.img_size).to(device) if args.classes[1] else None
                         })
+    
     nets.netG.to(device)
     nets.netD_i.to(device)
     nets.netD_t.to(device)
@@ -83,6 +104,14 @@ def train(args):
                           "se_optimizier": torch.optim.Adam(nets.netSE.parameters(), lr=glr, betas=(args.betas[0], args.betas[1])) if args.classes[1] else None,
                           "ds_optimizier": torch.optim.Adam(nets.netD_style.parameters(), lr=dlr, betas=(args.betas[0], args.betas[1])) if args.classes[1] else None
                           }) 
+    # if args.single_mod:
+    #     nets.netG2 = copy.deepcopy(nets.netG).to(device)
+    #     nets.netD_i2 = copy.deepcopy(nets.netD_i).to(device)
+    #     nets.netD_t2 = copy.deepcopy(nets.netD_t).to(device)
+    #     optims.g_optimizier_2= copy.deepcopy(nets.g_optimizier)
+    #     optims.di_optimizier_2= copy.deepcopy(nets.di_optimizier)
+    #     optims.dt_optimizier_2= copy.deepcopy(nets.dt_optimizier)
+
 
     if args.sepoch > 0:
         load_nets(args, nets, args.sepoch, optims)
@@ -150,7 +179,7 @@ def train(args):
                 # Labels for computing classification loss.
                 d_false_org = d_false_org.to(device)
                 mask = mask.to(device)
-                # paired_img = paired_img.to(device)
+                paired_img = paired_img.to(device)
 
                 t_img = t_img.to(device)
                 # plt.subplot(232)
@@ -159,7 +188,8 @@ def train(args):
                 index = loss_filter(mask)
                 # 2. Train the discriminator
                 # Compute loss with real whole images.
-                out_src, out_cls, out_class_cls = nets.netD_i(x_real)
+                out_src, out_cls, out_class_cls = nets.netD_i(x_real) if not args.single_mod else nets.netD_i(paired_img)
+                
                 # plt.subplot(233)
                 # plt.imshow(  x_real[2].cpu().detach().permute(1, 2, 0).numpy(), cmap='gray')
                 # plt.savefig('x_real greyscaled')
@@ -192,16 +222,17 @@ def train(args):
                 
                 
                 # Compute loss for gradient penalty.
-                alpha = torch.rand(x_real.size(0), 1, 1, 1).to(device)
+                alpha = torch.rand(x_real.size(0), 1, 1, 1).to(device) if not args.single_mod else torch.rand(paired_img.size(0), 1, 1, 1).to(device)
                 x_hat = (alpha * x_real.data + (1 - alpha)
-                         * x_fake.data).requires_grad_(True)
+                         * x_fake.data).requires_grad_(True) if not args.single_mod else (alpha * paired_img.data + (1 - alpha)
+                                                                                         * x_fake.data).requires_grad_(True)
                 out_src, _, _ = nets.netD_i(x_hat)
                 d_loss_gp = gradient_penalty(out_src, x_hat, device)
 
                 # compute loss with target images
                 if index.shape[0] != 0:
                     out_src, out_cls, out_class_cls = nets.netD_t(
-                        torch.index_select(t_img, dim=0, index=index))
+                        torch.index_select(t_img, dim=0, index=index)) if not args.single_mod else nets.netD_t(torch.index_select(paired_img * mask, dim=0, index=index)) 
                     d_org = torch.index_select(d_org, dim=0, index=index)
                     d_loss_real_t = -torch.mean(out_src)
                     d_loss_cls_t = F.binary_cross_entropy_with_logits(
@@ -226,7 +257,8 @@ def train(args):
                                                                         reduction='sum') / out_class_f_cls.size(0)
 
                     x_hat = (alpha * t_img.data + (1 - alpha)
-                             * t_fake.data).requires_grad_(True)
+                             * t_fake.data).requires_grad_(True) if not args.single_mod else (alpha * (paired_img * mask).data + (1 - alpha)
+                                                                                                * t_fake.data).requires_grad_(True)
                     x_hat = torch.index_select(x_hat, dim=0, index=index)
                     out_src, _, _ = nets.netD_t(x_hat)
                     d_loss_gp_t = gradient_penalty(out_src, x_hat, device)
@@ -358,7 +390,7 @@ def train(args):
                 # show syn images after every epoch
                 # try:
                 x_real, x_infrared, x_rgb, trg_orig, trg_infra_fake, trg_rgb_fake, pair, class_seg = plot_images(
-                    nets, syneval_dataset, device, args.c_dim, args.wavelet_type, args.lab, args.classes, "debug" in args.mode)
+                    nets, syneval_dataset, device, args.c_dim, args.wavelet_type, args.lab, args.classes, "debug" in args.mode, args.single_mod)
                 wandb.log({"orig": wandb.Image(
                     x_real, caption="orig_" + str(epoch))}, commit=False)
                 wandb.log(
@@ -404,11 +436,12 @@ def train(args):
                     save_state_net(nets.netSE, args, epoch + 1,
                                 optims.se_optimizier, args.experiment_name)
             if (epoch+1) % args.eval_every == 0:
-                fid_stargan, fid_dict, dice_dict, s_score_dict, iou_dict, IS_ignite_dict, fid_ignite_dict, mae_dict = calculate_all_metrics(args, nets.netG)
-                wandb.log(dict(fid_stargan), step=ii + 1, commit=False)
+                psnr_ignite, fid_dict, dice_dict, s_score_dict, iou_dict, IS_ignite_dict, fid_ignite_dict, mae_dict, ssim_dict = calculate_all_metrics(args, nets.netG)
+                wandb.log(dict(psnr_ignite), step=ii + 1, commit=False)
                 wandb.log(dict(fid_dict), step=ii + 1, commit=False)
                 wandb.log(dict(IS_ignite_dict), step=ii + 1, commit=False)
                 wandb.log(dict(fid_ignite_dict), step=ii + 1, commit=False)
+                wandb.log(dict(ssim_dict), step=ii + 1, commit=False)
 
                 wandb.log(dict(dice_dict), step=ii + 1, commit=False)
                 wandb.log(dict(iou_dict), step=ii + 1, commit=False)

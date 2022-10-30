@@ -1,4 +1,5 @@
 
+from tkinter.tix import Tree
 from torch.utils.data import Dataset, DataLoader
 import os
 import numpy as np
@@ -107,11 +108,17 @@ class DroneVeichleDataset(Dataset):
                        paired_image=False,
                        lab = False,
                        classes=False,
-                       debug = False
+                       debug = False,
+                       single_mod=(False,'mod'),
+                       remove_dark=False,
                        ):
         super(DroneVeichleDataset, self).__init__()
         
         if not to_be_loaded:
+            cooo = 0
+            self.remove_dark_samples = remove_dark
+
+            self.single_mod = single_mod
             self.paired_image = paired_image
             self.lab = lab
             self.classes =classes
@@ -144,11 +151,17 @@ class DroneVeichleDataset(Dataset):
             self.transfroms = transforms
 
             for i,c in tqdm(raw_path): 
-                if c == 0: #infrared
+                if (c == 0 and not self.single_mod[0]) or (c == 0 and self.single_mod[0] and self.single_mod[1]=='ir'): #infrared
                     img = Image.open(i)
+
                     img = img.crop(box)
                     # convert image to numpy array
                     img = np.asarray(img)
+                    if self.remove_dark_samples:
+                        text = 1 if isbright(img) else 0
+                        if text!=1:
+                            continue
+                        cooo+=text
                     #lasciamo qui sotto?????
                     img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
                     img, img_pair = raw_preprocess(img, get_s=True, path_pair=i.replace(split+"imgr",split+"img"), img_size = self.img_size)
@@ -172,39 +185,45 @@ class DroneVeichleDataset(Dataset):
                     img_segm = cv2.resize(img_segm, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
 
                     self.seg_mask_dataset.append(label_preprocess(img_segm))
-                elif c==1:
-                        img = Image.open(i)
-                        img = img.crop(box)
+                elif (c==1 and not self.single_mod[0]) or (c==1 and self.single_mod[0] and self.single_mod[1]=='rgb'):
+                    img = Image.open(i)
+                    img = img.crop(box)
 
-                        # convert image to numpy array
-                        img = np.asarray(img)
-                        # img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
-                        #lasciamo qui sotto?????
-                        img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
-                        img, img_pair = raw_preprocess(img, get_s=True, path_pair=i.replace(split+"img",split+"imgr"), img_size = self.img_size)
+                    # convert image to numpy array
+                    img = np.asarray(img)
+                    if self.remove_dark_samples:
+                        text = 1 if isbright(img) else 0
+                        if text!=1:
+                            continue
+                        cooo+=text
 
-                        if classes:
-                            classes_seg, classes_labels = segmented_classes_extract(split, i, self.img_size, box)
-                            if classes_labels == []:
-                                print(i)
-                                continue
-                            #dataset/val/valimg/01320.jpg
-                            #dataset/val/valimg/01322.jpg
-                            self.raw_classes.append(classes_seg)
-                            self.seg_classes_labels.append(classes_labels)
+                    # img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
+                    #lasciamo qui sotto?????
+                    img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
+                    img, img_pair = raw_preprocess(img, get_s=True, path_pair=i.replace(split+"img",split+"imgr"), img_size = self.img_size)
 
-                        self.raw_dataset.append([(img, img_pair), c])
+                    if classes:
+                        classes_seg, classes_labels = segmented_classes_extract(split, i, self.img_size, box)
+                        if classes_labels == []:
+                            print(i)
+                            continue
+                        #dataset/val/valimg/01320.jpg
+                        #dataset/val/valimg/01322.jpg
+                        self.raw_classes.append(classes_seg)
+                        self.seg_classes_labels.append(classes_labels)
 
-                        #?????
-                        a =  i.replace(split+"img",split+"masks")
-                        img_segm = Image.open(a)
-                        img_segm = img_segm.crop(box)
+                    self.raw_dataset.append([(img, img_pair), c])
 
-                        # convert image to numpy array
-                        img_segm = np.asarray(img_segm)
-                        img_segm = cv2.resize(img_segm, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
+                    #?????
+                    a =  i.replace(split+"img",split+"masks")
+                    img_segm = Image.open(a)
+                    img_segm = img_segm.crop(box)
 
-                        self.seg_mask_dataset.append(label_preprocess(img_segm))
+                    # convert image to numpy array
+                    img_segm = np.asarray(img_segm)
+                    img_segm = cv2.resize(img_segm, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
+
+                    self.seg_mask_dataset.append(label_preprocess(img_segm))
 
 
             self.split = split
@@ -215,7 +234,7 @@ class DroneVeichleDataset(Dataset):
 
             print("DroneVeichle "+ split+ " data load success!")
             print("total size:{}".format(len(self.raw_dataset)))
-            
+            print(cooo)
     def __getitem__(self, item):
         img, paired_img, class_label, seg_mask = self.raw_dataset[item][0][0],\
                                                  self.raw_dataset[item][0][1], \
@@ -545,7 +564,17 @@ class DefaultDataset(Dataset):
 
 
 
-
+def isbright(image, dim=10, thresh=0.5):
+    # Resize image to 10x10
+    if len(image.shape) <3:
+        image = np.repeat(image[...,None],3,axis=2)
+    image = cv2.resize(image, (dim, dim))
+    # Convert color space to LAB format and extract L channel
+    L, A, B = cv2.split(cv2.cvtColor(image, cv2.COLOR_BGR2LAB))
+    # Normalize L channel by dividing all pixel values with maximum pixel value
+    L = L/np.max(L)
+    # Return True if mean is greater than thresh else False
+    return np.mean(L) > thresh
 
 class KAISTDataset(Dataset):
     def __init__(self, path="dataset", split='train', modals=('img','imgr'),transforms=None, img_size=128, to_be_loaded=False, colored_data=True, paired_image=False):
@@ -753,43 +782,42 @@ def testing_dataset():
     # for epoch, (x_real, paired_img, label_org) in enumerate(syn_loader):
 
         plt.axis('off')
-        # plt.subplot(241)
-        # plt.imshow(denorm(x_real).squeeze().cpu().numpy().transpose(1,2,0))
-        # plt.title('real image')
-        # plt.subplot(242)
-        # plt.imshow(denorm(t_img).squeeze().cpu().numpy().transpose(1,2,0))
-        # plt.title('target image')
-        # plt.subplot(243)
-        # plt.imshow(paired_img.squeeze().cpu().numpy().transpose(1,2,0),)
-        # plt.title('paired image')
-        # plt.subplot(244)
-        # plt.imshow(denorm(mask).squeeze().cpu().numpy(),cmap=plt.get_cmap('gray'))
-        # plt.title('target mask')
-        # plt.savefig('test'+str(epoch))
-        # plt.show()
+        plt.subplot(241)
+        plt.imshow(denorm(x_real).squeeze().cpu().numpy().transpose(1,2,0))
+        plt.title('real image')
+        plt.subplot(242)
+        plt.imshow(denorm(t_img).squeeze().cpu().numpy().transpose(1,2,0))
+        plt.title('target image')
+        plt.subplot(243)
+        plt.imshow(paired_img.squeeze().cpu().numpy().transpose(1,2,0),)
+        plt.title('paired image')
+        plt.subplot(244)
+        plt.imshow(denorm(mask).squeeze().cpu().numpy(),cmap=plt.get_cmap('gray'))
+        plt.title('target mask')
+        plt.savefig('test'+str(epoch))
+        plt.show()
 
         #print(lab_seg)
-        lab_seg = label2onehot(lab_seg, 6)
+        # lab_seg = label2onehot(lab_seg, 6)
 
-        for classes, l_seg in zip(classes_seg,lab_seg):
-            # print(classes.shape)
-            idxs = [(l_seg[i] ==1) if i>0 else False for i in range(l_seg.size(0))]
-            idx = idxs.index(True) if len(list((filter(lambda score: score == True, idxs)))) == 1 else False
-            if idx == False:
-                check = False
-                while check ==False:
-                    idx = random.randint(1, len(idxs)-1)
-                    check = idxs[idx]
+        # for classes, l_seg in zip(classes_seg,lab_seg):
+        #     # print(classes.shape)
+        #     idxs = [(l_seg[i] ==1) if i>0 else False for i in range(l_seg.size(0))]
+        #     idx = idxs.index(True) if len(list((filter(lambda score: score == True, idxs)))) == 1 else False
+        #     if idx == False:
+        #         check = False
+        #         while check ==False:
+        #             idx = random.randint(1, len(idxs)-1)
+        #             check = idxs[idx]
             
-            plt.imshow(denorm(classes)[idx].cpu().numpy().transpose(1,2,0))
-            plt.title('target image'+str(idx))
-            #plt.savefig('a'+str(epoch))
-        #assume batch size = 1, show every target even if not exists
-        for idx in range(classes_seg.size(1)):
-            plt.imshow(denorm(classes_seg)[0][idx].cpu().numpy().transpose(1,2,0))
-            plt.title('target image'+str(l_seg[0]))
-            #plt.savefig('b'+str(idx))
-
+        #     plt.imshow(denorm(classes)[idx].cpu().numpy().transpose(1,2,0))
+        #     plt.title('target image'+str(idx))
+        #     #plt.savefig('a'+str(epoch))
+        # #assume batch size = 1, show every target even if not exists
+        # for idx in range(classes_seg.size(1)):
+        #     plt.imshow(denorm(classes_seg)[0][idx].cpu().numpy().transpose(1,2,0))
+        #     plt.title('target image'+str(l_seg[0]))
+        #     #plt.savefig('b'+str(idx))
 if __name__ == "__main__":
     print()
-    #testing_dataset()
+    # testing_dataset()
