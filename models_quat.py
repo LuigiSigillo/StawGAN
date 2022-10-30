@@ -28,7 +28,7 @@ bias = False
 class conv_block(nn.Module):
     # base block
     def __init__(self, ch_in, ch_out, affine=True, actv=nn.LeakyReLU(inplace=True), downsample=False, upsample=False,
-                 share_net_real=False, phm=False, phm_n=4, qsn=False, real=True):
+                 share_net_real=False, phm=False, phm_n=4, qsn=False, real=True, groupnorm=False):
         super(conv_block, self).__init__()
         if phm and not share_net_real:
             self.conv = nn.Sequential(
@@ -51,16 +51,16 @@ class conv_block(nn.Module):
         elif real or share_net_real:
             self.conv = nn.Sequential(
                 nn.Conv2d(ch_in, ch_out, kernel_size=3, stride=1, padding=1, bias=bias),
-                nn.InstanceNorm2d(ch_out, affine=affine),
+                nn.GroupNorm(num_channels = ch_out, num_groups=32, affine=affine) if upsample and groupnorm  else nn.InstanceNorm2d(ch_out, affine=affine) ,
                 actv,
                 nn.Conv2d(ch_out, ch_out, kernel_size=3, stride=1, padding=1, bias=bias),
-                nn.InstanceNorm2d(ch_out, affine=affine),
+                nn.GroupNorm(num_channels = ch_out, num_groups=32, affine=affine) if upsample and groupnorm  else nn.InstanceNorm2d(ch_out, affine=affine) ,
                 actv
             )
         self.downsample = downsample
         self.upsample = upsample
         if self.upsample:
-            self.up = up_conv(ch_out, ch_out // 2, affine,phm=phm, qsn=qsn, real=real)
+            self.up = up_conv(ch_out, ch_out // 2, affine,phm=phm, qsn=qsn, real=real, groupnorm=groupnorm)
 
     def forward(self, x):
         x1 = self.conv(x)
@@ -78,7 +78,7 @@ class conv_block(nn.Module):
 
 class up_conv(nn.Module):
     # base block
-    def __init__(self, ch_in, ch_out, affine=True, actv=nn.LeakyReLU(inplace=True), phm=False, phm_n=4, qsn=False, real=True):
+    def __init__(self, ch_in, ch_out, affine=True, actv=nn.LeakyReLU(inplace=True), phm=False, phm_n=4, qsn=False, real=True, groupnorm=False):
         super(up_conv, self).__init__()
 
         if phm:
@@ -99,7 +99,8 @@ class up_conv(nn.Module):
             self.up = nn.Sequential(
                 nn.Upsample(scale_factor=2),
                 nn.Conv2d(ch_in, ch_out, kernel_size=3, stride=1, padding=1, bias=bias),
-                nn.InstanceNorm2d(ch_out, affine=affine),
+                #nn.InstanceNorm2d(ch_out, affine=affine),
+                nn.GroupNorm(num_channels = ch_out, num_groups=32, affine=affine) if groupnorm  else nn.InstanceNorm2d(ch_out, affine=affine) ,
                 actv
             )
 
@@ -135,15 +136,15 @@ class Encoder(nn.Module):
 
 class Decoder(nn.Module):
     # the Decoder_x or Decoder_r of G
-    def __init__(self, in_c, mid_c, layers, affine, r, phm=False, qsn=False, real=True):
+    def __init__(self, in_c, mid_c, layers, affine, r, phm=False, qsn=False, real=True,groupnorm=False):
         super(Decoder, self).__init__()
         decoder = []
         for i in range(layers - 1):
-            decoder.append(conv_block(in_c - r, mid_c, affine, downsample=False, upsample=True, phm=phm, qsn=qsn, real=real))
+            decoder.append(conv_block(in_c - r, mid_c, affine, downsample=False, upsample=True, phm=phm, qsn=qsn, real=real, groupnorm=groupnorm))
             in_c = mid_c
             mid_c = mid_c // 2
             r = r // 2
-        decoder.append(conv_block(in_c - r, mid_c, affine, downsample=False, upsample=False, phm=phm, qsn=qsn, real=real))
+        decoder.append(conv_block(in_c - r, mid_c, affine, downsample=False, upsample=False, phm=phm, qsn=qsn, real=real,groupnorm=groupnorm))
         self.decoder = nn.Sequential(*decoder)
 
     def forward(self, share_input, encoder_input):
@@ -164,7 +165,7 @@ SHARE NET
 
 class ShareNet(nn.Module):
     # the Share Block of G
-    def __init__(self, in_c, out_c, layers, affine, r, share_net_real=True, phm=False, qsn=False, real=True):
+    def __init__(self, in_c, out_c, layers, affine, r, share_net_real=True, phm=False, qsn=False, real=True, groupnorm=False):
         super(ShareNet, self).__init__()
         encoder = []
         decoder = []
@@ -172,11 +173,11 @@ class ShareNet(nn.Module):
             encoder.append(conv_block(in_c, in_c * 2, affine, downsample=True, upsample=False,
                                       share_net_real=share_net_real, phm=phm, qsn=qsn, real=real))
             decoder.append(conv_block(out_c - r, out_c // 2, affine, downsample=False, upsample=True,
-                                      share_net_real=share_net_real, phm=phm, qsn=qsn, real=real))
+                                      share_net_real=share_net_real, phm=phm, qsn=qsn, real=real, groupnorm=groupnorm))
             in_c = in_c * 2
             out_c = out_c // 2
             r = r // 2
-        self.bottom = conv_block(in_c, in_c * 2, affine, upsample=True, phm=phm, qsn=qsn, real=real)
+        self.bottom = conv_block(in_c, in_c * 2, affine, upsample=True, phm=phm, qsn=qsn, real=real, groupnorm=groupnorm)
         self.encoder = nn.Sequential(*encoder)
         self.decoder = nn.Sequential(*decoder)
         self.layers = layers
@@ -221,7 +222,7 @@ class Discriminator(nn.Module):
             # layers.append(nn.Conv2d(1, conv_dim, kernel_size=4, stride=2, padding=1))
         elif real:
             if spectral:
-                layers.append(spectral_norm(nn.Conv2d(1, conv_dim, kernel_size=4, stride=2, padding=1)))
+                layers.append(spectral_norm(nn.Conv2d(1 if not colored_input else 3, conv_dim, kernel_size=4, stride=2, padding=1)))
             else:
                 layers.append(nn.Conv2d(1 if not colored_input else 3, conv_dim, kernel_size=4, stride=2, padding=1))
 
@@ -335,20 +336,20 @@ class Generator(nn.Module):
     # the G of TarGAN
 
     def __init__(self, in_c, mid_c, layers, s_layers, affine, last_ac=True, colored_input=True, wav=False, real=True, qsn=False, phm=False, phm_n=4, 
-                        classes=(False, False),spectral=False, last_layer_gen_real=True, lab=False):
+                        classes=(False, False),spectral=False, last_layer_gen_real=True, lab=False, groupnorm=False):
         super(Generator, self).__init__()
         self.img_encoder = Encoder(in_c, mid_c, layers, affine, phm=phm, qsn=qsn, real=real)
         self.in_c_targ = in_c-4 if wav is not None else in_c
         self.target_encoder = Encoder(self.in_c_targ, mid_c, layers, affine, phm=phm, qsn=qsn, real=real)
         if not classes[1]:
-            self.target_decoder = Decoder(mid_c * (2 ** layers), mid_c * (2 ** (layers - 1)), layers, affine,64) 
-            self.img_decoder = Decoder(in_c = mid_c * (2 ** layers),mid_c = mid_c * (2 ** (layers - 1)), layers = layers, affine = affine,r=64)
+            self.target_decoder = Decoder(mid_c * (2 ** layers), mid_c * (2 ** (layers - 1)), layers, affine,64, groupnorm) 
+            self.img_decoder = Decoder(in_c = mid_c * (2 ** layers),mid_c = mid_c * (2 ** (layers - 1)), layers = layers, affine = affine,r=64,groupnorm= groupnorm)
         else:
             self.target_style_decoder = DecoderStyle(in_c=mid_c * (2 ** layers), style_dim=64, img_size=256) 
             self.img_style_decoder = DecoderStyle(in_c=mid_c * (2 ** layers), style_dim=64, img_size=256) 
             
 
-        self.share_net = ShareNet(mid_c * (2 ** (layers - 1)), mid_c * (2 ** (layers - 1 + s_layers)), s_layers, affine,256)
+        self.share_net = ShareNet(mid_c * (2 ** (layers - 1)), mid_c * (2 ** (layers - 1 + s_layers)), s_layers, affine,256, groupnorm)
         
         if phm and not last_layer_gen_real:
             self.out_img = PHMConv(phm_n, mid_c, 4, 1, bias=bias)
@@ -743,3 +744,24 @@ class DiscriminatorStyle(nn.Module):
         idx = torch.LongTensor(range(y.size(0))).to(y.device)
         out = out[idx, y]  # (batch)
         return out
+
+
+
+# Defines the total variation (TV) loss, which encourages spatial smoothness in the translated image.
+class TVLoss(nn.Module):
+    def __init__(self,TVLoss_weight=1):
+        super(TVLoss,self).__init__()
+        self.TVLoss_weight = TVLoss_weight
+
+    def forward(self,x):
+        batch_size = x.size()[0]
+        h_x = x.size()[2]
+        w_x = x.size()[3]
+        count_h = self._tensor_size(x[:,:,1:,:])
+        count_w = self._tensor_size(x[:,:,:,1:])
+        h_tv = torch.pow((x[:,:,1:,:]-x[:,:,:h_x-1,:]),2).sum()
+        w_tv = torch.pow((x[:,:,:,1:]-x[:,:,:,:w_x-1]),2).sum()
+        return self.TVLoss_weight*2*(h_tv/count_h+w_tv/count_w)/batch_size
+
+    def _tensor_size(self,t):
+        return t.size()[1]*t.size()[2]*t.size()[3]

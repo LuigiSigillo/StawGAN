@@ -72,8 +72,11 @@ if __name__ == '__main__':
     parser.add_argument("-remove_dark_samples", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.") 
     parser.add_argument('-wavelet_type', type=str,default=None) #real or quat
     parser.add_argument("-loss_ssim", type=str2bool, nargs='?', const=True, default=True, help="Activate nice mode.")
+    parser.add_argument("-tv_loss", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
     parser.add_argument('-w_ssim', type=float, default=1)
-    
+    parser.add_argument("-spectral", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
+    parser.add_argument("-groupnorm", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
+
     parser.add_argument("-real", type=str2bool, nargs='?', const=True, default=True, help="Activate nice mode.")
     parser.add_argument("-qsn", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
     parser.add_argument("-phm", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")

@@ -1,5 +1,5 @@
 from metrics import calculate_all_metrics
-from models_quat import DiscriminatorStyle, Generator, Discriminator, ShapeUNet, StyleEncoder
+from models_quat import DiscriminatorStyle, Generator, Discriminator, ShapeUNet, StyleEncoder, TVLoss
 from dataloader import *
 from torch.utils.data import DataLoader
 from utils import *
@@ -77,15 +77,15 @@ def train(args):
         while in_c % 4 !=0:
             in_c+=1
     netG = Generator(in_c=in_c_gen + args.c_dim, mid_c=args.G_conv, layers=2, s_layers=3, affine=True, last_ac=True,
-                     colored_input=args.color_images, wav=args.wavelet_type,real=args.real, qsn=args.qsn, phm=args.phm, lab=args.lab, classes= args.classes)
+                     colored_input=args.color_images, wav=args.wavelet_type,real=args.real, qsn=args.qsn, phm=args.phm, lab=args.lab, classes= args.classes, groupnorm=args.groupnorm)
     if args.pretrained_generator:
         netG.load_state_dict(torch.load(
             args.save_path+"/pretrained_gen_"+str(args.img_size)+".pt"))
 
     
     nets = munch.Munch({"netG": netG,
-                        "netD_i": Discriminator(c_dim=args.c_dim * 2, image_size=args.img_size, colored_input=args.color_images,real=args.real, qsn=args.qsn, phm=args.phm, classes=args.classes),
-                        "netD_t": Discriminator(c_dim=args.c_dim * 2, image_size=args.img_size, colored_input=args.color_images,real=args.real, qsn=args.qsn, phm=args.phm, classes=args.classes),
+                        "netD_i": Discriminator(c_dim=args.c_dim * 2, image_size=args.img_size, colored_input=args.color_images,real=args.real, qsn=args.qsn, phm=args.phm, classes=args.classes, spectral=args.spectral),
+                        "netD_t": Discriminator(c_dim=args.c_dim * 2, image_size=args.img_size, colored_input=args.color_images,real=args.real, qsn=args.qsn, phm=args.phm, classes=args.classes, spectral=args.spectral),
                         "netH":  ShapeUNet(img_ch=in_c, output_ch=1, mid=args.h_conv,real=args.real, qsn=args.qsn, phm=args.phm),
                         "netSE": StyleEncoder(img_size=args.img_size).to(device) if args.classes[1] else None,
                         "netD_style" : DiscriminatorStyle(img_size=args.img_size).to(device) if args.classes[1] else None
@@ -122,8 +122,8 @@ def train(args):
     print('start training...')
 
     ii = args.sepoch * len(syn_loader)
-    ssim = tgm.losses.SSIM(3, reduction='mean')
-
+    ssim = tgm.losses.SSIM(args.img_size-1, reduction='mean')
+    criterionTV = TVLoss(TVLoss_weight=1)
     # logdir = "log/" + args.save_path
     # log_writer = LogWriter(logdir)
     with wandb.init(config=args, project="targan_drone") as run:
@@ -316,6 +316,11 @@ def train(args):
                     ssim_loss = ssim(x_fake, paired_img.to(device))
                 else:
                     ssim_loss = torch.tensor(0)
+                if args.tv_loss:
+                    loss_tv = criterionTV(x_fake)
+                else:
+                    loss_tv = torch.tensor(0)
+
                 if index.shape[0] != 0:
                     out_src, out_cls, out_class_cls = nets.netD_t(
                         torch.index_select(t_fake, dim=0, index=index))
@@ -341,7 +346,7 @@ def train(args):
                     torch.abs((denorm(x_fake) if not args.lab else x_fake) * mask - (denorm(t_fake) if not args.lab else t_fake)))
                 # Backward and optimize.
                 gi_loss = g_loss_fake + args.w_cycle * g_loss_rec + \
-                    g_loss_cls * args.w_g_c  +ssim_loss*args.w_ssim +  (g_class_loss_cls if args.classes[0] and not args.classes[1] else torch.tensor(0).to(device)) # + shape_loss* args.w_shape
+                    g_loss_cls * args.w_g_c  +ssim_loss*args.w_ssim + loss_tv + (g_class_loss_cls if args.classes[0] and not args.classes[1] else torch.tensor(0).to(device)) # + shape_loss* args.w_shape
                 gt_loss = gt_loss + args.w_cycle * g_loss_rec_t + \
                     shape_loss_t * args.w_shape + cross_loss * args.w_g_cross
                 style_comp = 0 if not args.classes[1] else g_style_loss *args.w_shape
