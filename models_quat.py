@@ -765,3 +765,11 @@ class TVLoss(nn.Module):
 
     def _tensor_size(self,t):
         return t.size()[1]*t.size()[2]*t.size()[3]
+
+
+
+from pytorch_msssim import SSIM
+
+class SSIM_Loss(SSIM):
+    def forward(self, img1, img2):
+        return ( 1 - super(SSIM_Loss, self).forward(img1, img2) )

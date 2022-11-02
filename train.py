@@ -1,5 +1,5 @@
 from metrics import calculate_all_metrics
-from models_quat import DiscriminatorStyle, Generator, Discriminator, ShapeUNet, StyleEncoder, TVLoss
+from models_quat import DiscriminatorStyle, Generator, Discriminator, SSIM_Loss, ShapeUNet, StyleEncoder, TVLoss
 from dataloader import *
 from torch.utils.data import DataLoader
 from utils import *
@@ -112,7 +112,6 @@ def train(args):
     #     optims.di_optimizier_2= copy.deepcopy(nets.di_optimizier)
     #     optims.dt_optimizier_2= copy.deepcopy(nets.dt_optimizier)
 
-
     if args.sepoch > 0:
         load_nets(args, nets, args.sepoch, optims)
     nets['netG_use'] = copy.deepcopy(netG)
@@ -122,7 +121,8 @@ def train(args):
     print('start training...')
 
     ii = args.sepoch * len(syn_loader)
-    ssim = tgm.losses.SSIM(args.img_size-1, reduction='mean')
+    # ssim = tgm.losses.SSIM(args.img_size-1, reduction='mean')
+    ssim = SSIM_Loss(win_size=3, data_range=1.0, size_average=True, channel=3)
     criterionTV = TVLoss(TVLoss_weight=1)
     # logdir = "log/" + args.save_path
     # log_writer = LogWriter(logdir)
@@ -313,7 +313,11 @@ def train(args):
                     # d_style_loss.backward()
                     # optims.ds_optimizier.step()
                 if args.loss_ssim:
-                    ssim_loss = ssim(x_fake, paired_img.to(device))
+                    # x_fake: (N,3,H,W) a batch of normalized images (-1 ~ 1)
+                    # paired_img: (N,3,H,W)  
+                    #X = (X + 1) / 2  # [-1, 1] => [0, 1]
+                    #Y = (Y + 1) / 2  
+                    ssim_loss = ssim((x_fake + 1) / 2, (paired_img+1).to(device) /2)
                 else:
                     ssim_loss = torch.tensor(0)
                 if args.tv_loss:

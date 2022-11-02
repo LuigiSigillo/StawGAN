@@ -110,7 +110,7 @@ if __name__ == '__main__':
     if "train" in args.mode:
         if "debug" in args.mode:
             args.batch_size = 1
-            args.img_size = 128
+            # args.img_size = 128
             args.preloaded_data = False
         if args.dataset=="droneveichle":
             train.train(args)
