@@ -323,6 +323,7 @@ def train(args):
                     #Y = (Y + 1) / 2  
                     ssim_loss = ssim((x_fake + 1) / 2, (paired_img+1).to(device) /2)
                     args.w_ssim = 0 if (epoch<10 or (epoch<100 and args.preloaded_data)) else 1
+                #TODO
                 if args.contrast_t:
                     l1_loss = criterionL1(nets.netContr(x_fake), nets.netContr(paired_img.to(device)) ) #non mi convince
         
