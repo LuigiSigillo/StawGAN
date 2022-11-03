@@ -114,6 +114,6 @@ if __name__ == '__main__':
             train_kaist.train(args)
     if "eval" in args.mode:
         if "debug" in args.mode:
-            args.batch_size = 1
+            args.eval_batch_size = 1
         evaluation(args)
         
