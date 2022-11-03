@@ -493,7 +493,7 @@ def train(args):
                 syn_loader = DataLoader(syn_dataset, batch_size=args.batch_size, shuffle=True)
             
             if epoch >args.epoch//2:
-                decay_frac = (epoch - args.epoch) / args.epoch//2
+                decay_frac = (epoch - args.epoch//2) / (args.epoch//2)
                 for opt in optims:
                     new_lr = args.ttur * (1 - decay_frac) if opt.startswith('d') else args.lr * (1 - decay_frac)
                     if optims[opt] is not None:
