@@ -1,3 +1,4 @@
+import random
 import numpy as np
 import torch
 from torch import nn
@@ -194,6 +195,8 @@ class ShareNet(nn.Module):
             return bottom_output
         encoder_output.reverse()
         for i, layer in enumerate(self.decoder):
+            #12,256,32,32
+            #12, 128,128, 64
             x = torch.cat([bottom_output, encoder_output[i][0]], dim=1)
             x = layer(x)
             bottom_output = x
@@ -335,7 +338,7 @@ def create_wavelet_from_input_tensor(inputs, mods, wav_type ):
 class Generator(nn.Module):
     # the G of TarGAN
 
-    def __init__(self, in_c, mid_c, layers, s_layers, affine, last_ac=True, colored_input=True, wav=False, real=True, qsn=False, phm=False, phm_n=4, 
+    def __init__(self, in_c, mid_c, layers, s_layers, affine, r_lay=256,last_ac=True, colored_input=True, wav=False, real=True, qsn=False, phm=False, phm_n=4, 
                         classes=(False, False),spectral=False, last_layer_gen_real=True, lab=False, groupnorm=False):
         super(Generator, self).__init__()
         self.img_encoder = Encoder(in_c, mid_c, layers, affine, phm=phm, qsn=qsn, real=real)
@@ -349,8 +352,9 @@ class Generator(nn.Module):
             self.img_style_decoder = DecoderStyle(in_c=mid_c * (2 ** layers), style_dim=64, img_size=256) 
             
 
-        self.share_net = ShareNet(mid_c * (2 ** (layers - 1)), mid_c * (2 ** (layers - 1 + s_layers)), s_layers, affine,256, groupnorm)
-        
+        self.share_net = ShareNet(in_c = mid_c * (2 ** (layers - 1)),
+                                 out_c = mid_c * (2 ** (layers - 1 + s_layers)), 
+                                layers = s_layers, affine = affine, r = r_lay, groupnorm=groupnorm)
         if phm and not last_layer_gen_real:
             self.out_img = PHMConv(phm_n, mid_c, 4, 1, bias=bias)
             self.out_tumor = PHMConv(phm_n, mid_c, 4, 1, bias=bias)
@@ -379,10 +383,13 @@ class Generator(nn.Module):
         self.phm = phm
         self.lab = lab
         self.classes = classes
+        self.sep = False
     # G(image,target_image,target_modality) --> (out_image,output_target_area_image)
 
     def forward(self, img, tumor=None, c=None, mode="train", wav_type=None, style=None,class_label=None):
         # print("input img shape",img.shape, c.shape) torch.Size([4, 1, 128, 128]) torch.Size([4, 3])
+        if self.sep:
+            rgb=[i for i,mod in enumerate(c) if torch.all(mod == torch.tensor([0.,1.]).to(device)).item()]
         c = c.view(c.size(0), c.size(1), 1, 1)
         c = c.repeat(1, 1, img.size(2), img.size(3))
         if self.classes[0] and not self.classes[1]:
@@ -396,12 +403,14 @@ class Generator(nn.Module):
             img = torch.cat([img[:,:1,:,:], c],dim=1)
         elif self.classes[0] and not self.classes[1]:
             img = torch.cat([img, c, class_label], dim=1)
+        elif self.sep:
+            img = torch.cat([img[[rgb]], c[[rgb]]], dim=1)
         else:
             img = torch.cat([img, c], dim=1)
-        
         if self.qsn or self.phm:
             img = torch.cat((img, torch.zeros(img.shape[0], self.in_c-img.shape[1] ,img.shape[2],img.shape[3]).to(device)), dim=1).to(device)
         
+
         x_1 = self.img_encoder(img)
         s_1 = self.share_net(x_1)
         if self.classes[1]:
@@ -415,7 +424,7 @@ class Generator(nn.Module):
         #print(res_img.shape)#torch.Size([4, 1, 128, 128])
         if self.last_ac:
             res_img = torch.tanh(res_img)
-        if mode == "train":
+        if mode == "train" and not self.sep:# and random.random() > 0.5:          
             if self.lab:
                 tumor = torch.cat([tumor[:,:1,:,:],c],dim=1)
             elif self.classes[0] and not self.classes[1]:
@@ -424,6 +433,7 @@ class Generator(nn.Module):
                 tumor = torch.cat([tumor, c], dim=1)
             if self.qsn or self.phm:
                 tumor = torch.cat((tumor, torch.zeros(tumor.shape[0], self.in_c_targ-tumor.shape[1] ,tumor.shape[2],tumor.shape[3]).to(device)), dim=1).to(device)
+            
             x_2 = self.target_encoder(tumor)
             s_2 = self.share_net(x_2)
             if self.classes[1]:
@@ -439,7 +449,32 @@ class Generator(nn.Module):
 
 
             return res_img, res_tumor
-        return res_img
+        
+        if self.sep:
+            ir = [i for i,mod in enumerate(c) if torch.all(mod == torch.tensor([1.,0.]).to(device)).item()]
+            if len(ir) !=0:    
+                tumor = torch.cat([tumor[[ir]], c[[ir]]], dim=1)
+                x_2 = self.target_encoder(tumor)
+                s_2 = self.share_net(x_2)
+                if self.classes[1]:
+                    dec_out = self.target_style_decoder(s_2, x_2, style)
+                else:
+                    dec_out = self.target_decoder(s_2,x_2)
+                res_tumor = self.out_tumor(dec_out) if not self.classes[1] else self.to_tumor(dec_out)
+                if self.lab:
+                    res_tumor = torch.cat([tumor_orig[:,:1,:,:], res_tumor], dim=1).to(device)
+
+                if self.last_ac:
+                    res_tumor = torch.tanh(res_tumor)
+            res = []
+            rgb_it, ir_it= iter(res_img), iter(res_tumor)
+            for i in range(c.size(0)):
+                if rgb[i] == i:
+                    res[i] == next(rgb_it)
+                else:
+                    res[i] == next(ir_it)
+            return torch.stack(res, dim=0).to(device)
+        return res_img #,tumor_orig+torch.randn_like(img_orig).to(device) #ŧesting
 
 
 '''

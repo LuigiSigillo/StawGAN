@@ -53,13 +53,14 @@ def train(args):
             #     debug = "debug" in args.mode)
     else:
         idx = 0
-        tensors_path = "/tensors/tensors_paired"
+        tensors_path = args.tensors_path #"/tensors/tensors_paired"
         args.epoch = 10*args.epoch
         args.save_every = 10*args.save_every
         args.eval_every = 10*args.eval_every
         syn_dataset = DroneVeichleDataset(to_be_loaded=True)
         syn_dataset.load_dataset(path=args.dataset_path+tensors_path, split="train",
-                                 idx=str(idx), img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim,lab=args.lab)
+                                 idx=str(idx), img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim,lab=args.lab,
+                                 classes=args.classes[0], single_mod=(args.single_mod, 'ir' if 'ir' in args.experiment_name else 'rgb'),debug = "debug" in args.mode, remove_dark=args.remove_dark_samples)
         syn_loader = DataLoader(
             syn_dataset, batch_size=args.batch_size, shuffle=True)
 
@@ -76,7 +77,7 @@ def train(args):
             in_c_gen+=1
         while in_c % 4 !=0:
             in_c+=1
-    netG = Generator(in_c=in_c_gen + args.c_dim, mid_c=args.G_conv, layers=2, s_layers=3, affine=True, last_ac=True,
+    netG = Generator(in_c=in_c_gen + args.c_dim, mid_c=args.G_conv, layers=args.layers_gen, s_layers=args.s_layers_gen, r_lay=args.r_lay, affine=True, last_ac=True,
                      colored_input=args.color_images, wav=args.wavelet_type,real=args.real, qsn=args.qsn, phm=args.phm, lab=args.lab, classes= args.classes, groupnorm=args.groupnorm)
     if args.pretrained_generator:
         netG.load_state_dict(torch.load(
@@ -318,6 +319,7 @@ def train(args):
                     #X = (X + 1) / 2  # [-1, 1] => [0, 1]
                     #Y = (Y + 1) / 2  
                     ssim_loss = ssim((x_fake + 1) / 2, (paired_img+1).to(device) /2)
+                    args.w_ssim = 0 if (epoch<10 or epoch<100) else 1
                 else:
                     ssim_loss = torch.tensor(0)
                 if args.tv_loss:
@@ -350,7 +352,7 @@ def train(args):
                     torch.abs((denorm(x_fake) if not args.lab else x_fake) * mask - (denorm(t_fake) if not args.lab else t_fake)))
                 # Backward and optimize.
                 gi_loss = g_loss_fake + args.w_cycle * g_loss_rec + \
-                    g_loss_cls * args.w_g_c  +ssim_loss*args.w_ssim + loss_tv + (g_class_loss_cls if args.classes[0] and not args.classes[1] else torch.tensor(0).to(device)) # + shape_loss* args.w_shape
+                    g_loss_cls * args.w_g_c  +ssim_loss*args.w_ssim + loss_tv*args.w_tv + (g_class_loss_cls if args.classes[0] and not args.classes[1] else torch.tensor(0).to(device)) # + shape_loss* args.w_shape
                 gt_loss = gt_loss + args.w_cycle * g_loss_rec_t + \
                     shape_loss_t * args.w_shape + cross_loss * args.w_g_cross
                 style_comp = 0 if not args.classes[1] else g_style_loss *args.w_shape
@@ -399,7 +401,7 @@ def train(args):
                 # show syn images after every epoch
                 # try:
                 x_real, x_infrared, x_rgb, trg_orig, trg_infra_fake, trg_rgb_fake, pair, class_seg = plot_images(
-                    nets, syneval_dataset, device, args.c_dim, args.wavelet_type, args.lab, args.classes, "debug" in args.mode, args.single_mod)
+                    nets, syneval_dataset, device, args.c_dim, args.wavelet_type, args.lab, args.classes, "debug" in args.mode, args.single_mod, args.preloaded_data)
                 wandb.log({"orig": wandb.Image(
                     x_real, caption="orig_" + str(epoch))}, commit=False)
                 wandb.log(
@@ -469,10 +471,10 @@ def train(args):
             if (epoch + 1) % 1 == 0:
                 elapsed = time.time() - start_time
                 elapsed = str(datetime.timedelta(seconds=elapsed))[:-7]
-                log = "Elapsed time [%s], Iteration [%i/%i], " % (
+                log = "Elapsed time [%s], Epoch [%i/%i], " % (
                     elapsed, epoch + 1, args.epoch)
                 print(log)
-                torch.cuda.empty_cache()
+
             if args.preloaded_data:
                 idx = idx+1 if (idx+1) < 18 else 0
                 print("loading dataset ", idx)
@@ -480,6 +482,15 @@ def train(args):
                 syn_dataset.load_dataset(path=args.dataset_path+tensors_path, split="train", idx=str(idx), 
                     img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim,lab=args.lab)
                 syn_loader = DataLoader(syn_dataset, batch_size=args.batch_size, shuffle=True)
+            
+            if epoch >args.epoch//2:
+                decay_frac = (epoch - args.epoch) / args.epoch//2
+                for opt in optims:
+                    new_lr = args.ttur * (1 - decay_frac) if opt.startswith('d') else args.lr * (1 - decay_frac)
+                    if optims[opt] is not None:
+                        for param_group in optims[opt].param_groups:
+                            param_group['lr'] = new_lr
+                print('updated learning rate: %f' % new_lr)
 
 
 
@@ -556,3 +567,4 @@ def adv_loss(logits, target):
 #     return loss_real, \
 #                        loss_fake,\
 #                     #    loss_reg.item()
+

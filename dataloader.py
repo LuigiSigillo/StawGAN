@@ -13,7 +13,7 @@ import torchvision as tv
 import random 
 from tqdm import tqdm
 from torchvision import transforms
-from utils import denorm, label2onehot, rgb2lab
+from utils import denorm, label2onehot, rgb2lab, set_deterministic
 
 import kornia as K
 
@@ -133,7 +133,6 @@ class DroneVeichleDataset(Dataset):
             if debug:
                 list_path = list_path[:40]
             for x in list_path:
-
                 if split+"imgr" in x:
                     c = np.array(0) #infrared
                     # tmp =  x.replace(split+"imgr",split+"masksr")
@@ -323,8 +322,11 @@ class DroneVeichleDataset(Dataset):
     def __len__(self):
         return len(self.raw_dataset)
 
-    def load_dataset(self, path="dataset", split='train', idx = "0", img_size=128, colored_data = True, paired_image=False, lab=False, classes=False):
-        self.seg_mask_dataset = torch.load(f"{path}/{idx}_{split}_label_dataset.pt")
+    def load_dataset(self, path="dataset", split='train', idx = "0", img_size=128, colored_data = True, paired_image=False, lab=False, classes=False,
+                        debug = False,
+                       single_mod=(False,'mod'),
+                       remove_dark=False):
+        self.seg_mask_dataset = torch.load(f"{path}/{idx}_{split}_seg_mask_dataset.pt")
         self.raw_dataset = torch.load(f"{path}/{idx}_{split}_raw_dataset.pt")
         self.img_size = img_size
         self.split=split
@@ -332,6 +334,10 @@ class DroneVeichleDataset(Dataset):
         self.paired_image = paired_image
         self.lab = lab
         self.classes = classes
+        self.debug = debug
+        self.single_mod = single_mod
+        self.remove_dark = remove_dark
+
     def get_item_rgb(self, img, t_img, paired_img, seg_mask, class_label,t_imgs_classes):
         if not self.colored_data:
             img = grayscale(torch.from_numpy(img).type(torch.FloatTensor).permute(2, 0, 1))
@@ -492,7 +498,7 @@ class DroneVeichleDatasetPreTraining(Dataset):
 
 
 
-def save_tensors_dataset(path="dataset", split="train", slices=19, max_length_slices=2000, img_size=256, my_folder = "dataset/tensors/tensors_paired"):
+def save_tensors_dataset(path="dataset", split="train", slices=19, max_length_slices=2000, img_size=256, my_folder = "dataset/tensors/tensors_paired", classes=False):
     modals=('img','imgr')
     fold = split + "/"
     path1 = os.path.join(path, fold+ split+modals[0])
@@ -502,12 +508,13 @@ def save_tensors_dataset(path="dataset", split="train", slices=19, max_length_sl
     for idx in tqdm(range(slices)):
         random.shuffle(list_path)
         l_o = list_path[:max_length_slices]
-        dt = DroneVeichleDataset(l_o,split=split, img_size=img_size, classes=True)
+        dt = DroneVeichleDataset(l_o,split=split, img_size=img_size, classes=classes, remove_dark=True)
         idx = str(idx)
 
         torch.save(dt.raw_dataset, f"{my_folder}/{idx}_{split}_raw_dataset.pt")
         torch.save(dt.seg_mask_dataset, f"{my_folder}/{idx}_{split}_seg_mask_dataset.pt")
-        torch.save(dt.raw_classes, f"{my_folder}/{idx}_{split}_raw_classes_dataset.pt")
+        if classes:
+            torch.save(dt.raw_classes, f"{my_folder}/{idx}_{split}_raw_classes_dataset.pt")
 
         list_path = list(set(list_path)-set(l_o))
         print(len(list_path), " remaining samples")
@@ -820,4 +827,7 @@ def testing_dataset():
         #     #plt.savefig('b'+str(idx))
 if __name__ == "__main__":
     print()
-    # testing_dataset()
+    #testing_dataset()
+    set_deterministic(888)
+    # save_tensors_dataset(path="dataset", split="train", slices=19, max_length_slices=2000, img_size=256,  my_folder = "dataset/tensors/tensors_classes")
+    # save_tensors_dataset(path="dataset", split="val", slices=2, max_length_slices=2000, img_size=256,  my_folder = "dataset/tensors/tensors_classes")

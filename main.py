@@ -5,16 +5,8 @@ import torch
 from metrics import evaluation
 import train
 import train_kaist
-def set_deterministic(seed=42):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+from utils import set_deterministic
 
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    # torch.backends.cudnn.enabled = False
 
 
 def check_errors(args):
@@ -47,7 +39,7 @@ def tuple_type(strings):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-mode', type=str, default='train')
+    parser.add_argument('-mode', type=str, default='traindebug')
     parser.add_argument('-dataset', type=str, default='droneveichle')
     parser.add_argument('-dataset_path', type=str, default='dataset')
     parser.add_argument('-experiment_name', type=str, default='testing')
@@ -62,6 +54,7 @@ if __name__ == '__main__':
     parser.add_argument('-epoch', type=int, default=50)
     parser.add_argument('-sepoch', type=int, default=0)
     parser.add_argument("-preloaded_data", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
+    parser.add_argument('-tensors_path', type=str, default='/tensors/tensors_nodark')
     parser.add_argument("-preloaded_data_eval", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
     parser.add_argument("-pretrained_generator", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
     parser.add_argument("-color_images", type=str2bool, nargs='?', const=True, default=True, help="Activate nice mode.")
@@ -72,8 +65,9 @@ if __name__ == '__main__':
     parser.add_argument("-remove_dark_samples", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.") 
     parser.add_argument('-wavelet_type', type=str,default=None) #real or quat
     parser.add_argument("-loss_ssim", type=str2bool, nargs='?', const=True, default=True, help="Activate nice mode.")
-    parser.add_argument("-tv_loss", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
     parser.add_argument('-w_ssim', type=float, default=1)
+    parser.add_argument("-tv_loss", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
+    parser.add_argument('-w_tv', type=float, default=5)
     parser.add_argument("-spectral", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
     parser.add_argument("-groupnorm", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
 
@@ -84,23 +78,26 @@ if __name__ == '__main__':
 
     parser.add_argument('-gan_version', type=str, default='Generator[2/3]+shapeunet+D')
     parser.add_argument('-modals', type=tuple, default=("img_ir", "img"))
-    parser.add_argument('-lr', type=float, default=1e-2)
-    parser.add_argument('-loss_function', type=str, default='wgan-gp+move+cycle+ugan+d+l2')
+    parser.add_argument('-lr', type=float, default=2e-4)
     parser.add_argument('-optimizer', type=str, default='adam')
-    parser.add_argument('-note', type=str,default='affine:True;')
     parser.add_argument('-random_seed', type=int, default='888')
     parser.add_argument('-c_dim', type=int, default='2')
     parser.add_argument('-h_conv', type=int, default='16')
     parser.add_argument('-G_conv', type=int, default='64')
+    parser.add_argument('-layers_gen', type=int, default='2')
+    parser.add_argument('-s_layers_gen', type=int, default='3')
+    parser.add_argument('-r_lay', type=int, default='256')
+
+
     parser.add_argument('-betas', type=tuple, default=(0.5, 0.9))
     parser.add_argument('-ttur', type=float, default=3e-4)
     parser.add_argument('-w_d_false_c', type=float, default=0.01)
     parser.add_argument('-w_d_false_t_c', type=float, default=0.01)
     parser.add_argument('-w_g_c', type=float, default=1.0)
     parser.add_argument('-w_g_t_c', type=float, default=1.0)
-    parser.add_argument('-w_g_cross', type=float, default=50.0)
+    parser.add_argument('-w_g_cross', type=float, default=25)
     parser.add_argument('-w_shape', type=float, default=1)
-    parser.add_argument('-w_cycle', type=float, default=1)
+    parser.add_argument('-w_cycle', type=float, default=10)
     
     args = parser.parse_args()
 
@@ -109,7 +106,6 @@ if __name__ == '__main__':
     set_deterministic(args.random_seed)
     if "train" in args.mode:
         if "debug" in args.mode:
-            args.batch_size = 1
             # args.img_size = 128
             args.preloaded_data = False
         if args.dataset=="droneveichle":

@@ -114,7 +114,7 @@ def save_state_net(net, args, index, optim=None, experiment_name="test"):
     if not os.path.isfile(save_path + '/outputs.txt'):
         with open(save_path + '/outputs.txt', mode='w') as f:
             argsDict = args.__dict__;
-            f.writelines(args.note + '\n')
+            f.writelines(args.experiment_name + '\n')
             for i in argsDict.keys():
                 f.writelines(str(i) + ' : ' + str(argsDict[i]) + '\n')
 
@@ -136,9 +136,9 @@ def moving_average(model, model_test, beta=0.999):
 
 
 
-def plot_images(nets, syneval_dataset, device, c_dim, wavelet_type, lab, classes, debug, single_mod):
+def plot_images(nets, syneval_dataset, device, c_dim, wavelet_type, lab, classes, debug, single_mod, preloaded_data):
     # fig = plt.figure(dpi=120)
-    idx = random.randint(0,20) if debug or single_mod else random.randint(1460,1485)
+    idx = random.randint(0,20) if debug or single_mod or preloaded_data else random.randint(1460,1485)
     with torch.no_grad():
         img = syneval_dataset[idx][0]
         pair_img = syneval_dataset[idx][2]
@@ -304,3 +304,18 @@ def rgb2lab(img_tensor=None, path=None):
     L = lab_t[[0], ...] / 50.0 - 1.0
     ab = lab_t[[1, 2], ...] / 110.0
     return torch.cat([L,ab], dim=0)
+
+
+
+
+
+def set_deterministic(seed=42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    # torch.backends.cudnn.enabled = False
