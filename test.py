@@ -15,8 +15,38 @@ import numpy as np
 # # grayscale = tv.transforms.Grayscale(num_output_channels=1)
 image = Image.open('dataset/train/trainimg/00001.jpg')
 imager = Image.open('dataset/train/trainimgr/00001.jpg').convert("RGB")
-print(np.array(imager))
+# print(np.array(imager))
+import torch
+import torchvision.transforms.functional as Fa
+import torch.nn.functional as F
 
+img = Image.open('results/targan_ssim_adj/valimgr_to_valimg/1456.png')
+img = Fa.adjust_contrast(img, 1)
+img = Fa.adjust_sharpness(img, 1)
+img = Fa.adjust_gamma(img, 1)
+img.save('rr.jpg')
+from torch import nn
+class ContrastNet(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.Conv2d(3, 6, 5)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Conv2d(6, 16, 5)
+        self.fc1 = nn.Linear(pow(2,4)*pow(61,2), 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, 3)
+
+    def forward(self, x):
+        x = self.pool(F.relu(self.conv1(x)))
+        x = self.pool(F.relu(self.conv2(x)))
+        x = torch.flatten(x, 1) # flatten all dimensions except batch
+        print(x.shape)
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+
+print(ContrastNet()(torch.randn(2,3,256,256)))
 # # color_palette = [(255,0,0), (128,0,128), (0,192,0), (0,100,0), (200,200,0)]
 # # dict_palette = {"car":color_palette[0], 
 # #                 "feright_car": color_palette[1],

@@ -70,6 +70,7 @@ if __name__ == '__main__':
     parser.add_argument('-w_tv', type=float, default=5)
     parser.add_argument("-spectral", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
     parser.add_argument("-groupnorm", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
+    parser.add_argument("-contrast_t", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
 
     parser.add_argument("-real", type=str2bool, nargs='?', const=True, default=True, help="Activate nice mode.")
     parser.add_argument("-qsn", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")

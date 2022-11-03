@@ -11,6 +11,7 @@ import torch.nn.functional as F
 from wavelet import wavelet_wrapper
 from torch.nn.utils.parametrizations import spectral_norm
 device = "cuda" if torch.cuda.is_available() else "cpu"
+from torchvision.transforms.functional import adjust_contrast,adjust_sharpness,adjust_gamma
 
 
 # def moving_average_update(statistic, curr_value, momentum):
@@ -474,6 +475,11 @@ class Generator(nn.Module):
                 else:
                     res[i] == next(ir_it)
             return torch.stack(res, dim=0).to(device)
+
+        # res_img = adjust_contrast(res_img, nets.netContr(res_img)[:,0])
+        # res_img = adjust_sharpness(res_img, nets.netContr(res_img)[:,1])
+        # res_img = adjust_gamma(res_img, nets.netContr(res_img)[:,2])
+        
         return res_img #,tumor_orig+torch.randn_like(img_orig).to(device) #ŧesting
 
 
@@ -808,3 +814,25 @@ from pytorch_msssim import SSIM
 class SSIM_Loss(SSIM):
     def forward(self, img1, img2):
         return ( 1 - super(SSIM_Loss, self).forward(img1, img2) )
+
+
+
+class ContrastNet(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.Conv2d(3, 6, 5)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Conv2d(6, 16, 5)
+        self.fc1 = nn.Linear(16 * 5 * 5, 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, 3)
+
+    def forward(self, x):
+        x = self.pool(F.relu(self.conv1(x)))
+        x = self.pool(F.relu(self.conv2(x)))
+        x = torch.flatten(x, 1) # flatten all dimensions except batch
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+

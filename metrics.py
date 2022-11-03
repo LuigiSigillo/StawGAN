@@ -630,10 +630,11 @@ def calculate_metrics_segmentation(args, net_G):
         if args.preloaded_data:
             syneval_dataset_tot = DroneVeichleDataset(path=args.dataset_path, split='val', colored_data=args.color_images,img_size=args.img_size, classes=args.classes[0])
             syneval_dataset_tot.load_dataset(path=args.dataset_path+"/tensors/tensors_paired",split="val", idx=str(idx), 
-                                            img_size=args.img_size, colored_data=args.color_images,paired_image=args.loss_ssim, classes=args.classes[0], lab=args.lab)
+                                            img_size=args.img_size, colored_data=args.color_images,paired_image=args.loss_ssim, classes=args.classes[0], lab=args.lab,
+                                            single_mod=(args.single_mod, 'ir' if 'ir' in args.experiment_name else 'rgb'),debug = "debug" in args.mode, remove_dark=args.remove_dark_samples)
         else:
             syneval_dataset_tot = DroneVeichleDataset(path=args.dataset_path, split='val', img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim, lab=args.lab, 
-                                                        classes=args.classes[0],    debug = "debug" in args.mode)
+                                                        classes=args.classes[0],  single_mod=(args.single_mod, 'ir' if 'ir' in args.experiment_name else 'rgb'),debug = "debug" in args.mode, remove_dark=args.remove_dark_samples)
         syneval_loader = DataLoader(syneval_dataset_tot, shuffle=True, batch_size=args.eval_batch_size)    
         for i in tqdm(range(len(mod))):  # 2 domains
             # ======= Directories =======
@@ -708,7 +709,8 @@ def calculae_metrics_translation(args, net_G):
         eval_dataset_imgr, eval_dataset_img = DefaultDataset(args.dataset_path+"/val/valimgr"), \
                                             DefaultDataset(args.dataset_path+"/val/valimg")
         to_get_classes = DroneVeichleDataset(path=args.dataset_path, split='val', colored_data=args.color_images,img_size=args.img_size,
-                                     paired_image=args.loss_ssim, classes=args.classes) if args.classes[0] else None
+                                            paired_image=args.loss_ssim, classes=args.classes[0], single_mod=(args.single_mod, 'ir' if 'ir' in args.experiment_name else 'rgb'),
+                                            debug = "debug" in args.mode, remove_dark=args.remove_dark_samples) if args.classes[0] else None
         generate_images_fid(net_G, args, 'test',
                                         eval_dataset_imgr,
                                         eval_dataset_img,

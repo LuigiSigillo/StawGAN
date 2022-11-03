@@ -1,5 +1,5 @@
 from metrics import calculate_all_metrics
-from models_quat import DiscriminatorStyle, Generator, Discriminator, SSIM_Loss, ShapeUNet, StyleEncoder, TVLoss
+from models_quat import ContrastNet, DiscriminatorStyle, Generator, Discriminator, SSIM_Loss, ShapeUNet, StyleEncoder, TVLoss
 from dataloader import *
 from torch.utils.data import DataLoader
 from utils import *
@@ -89,7 +89,8 @@ def train(args):
                         "netD_t": Discriminator(c_dim=args.c_dim * 2, image_size=args.img_size, colored_input=args.color_images,real=args.real, qsn=args.qsn, phm=args.phm, classes=args.classes, spectral=args.spectral),
                         "netH":  ShapeUNet(img_ch=in_c, output_ch=1, mid=args.h_conv,real=args.real, qsn=args.qsn, phm=args.phm),
                         "netSE": StyleEncoder(img_size=args.img_size).to(device) if args.classes[1] else None,
-                        "netD_style" : DiscriminatorStyle(img_size=args.img_size).to(device) if args.classes[1] else None
+                        "netD_style" : DiscriminatorStyle(img_size=args.img_size).to(device) if args.classes[1] else None,
+                        "netContr": ContrastNet() if args.contrast_t else None
                         })
     
     nets.netG.to(device)
@@ -103,7 +104,8 @@ def train(args):
                           "dt_optimizier": torch.optim.Adam(nets.netD_t.parameters(), lr=dlr, betas=(args.betas[0], args.betas[1])),
                           "h_optimizier": torch.optim.Adam(nets.netH.parameters(), lr=glr, betas=(args.betas[0], args.betas[1])),
                           "se_optimizier": torch.optim.Adam(nets.netSE.parameters(), lr=glr, betas=(args.betas[0], args.betas[1])) if args.classes[1] else None,
-                          "ds_optimizier": torch.optim.Adam(nets.netD_style.parameters(), lr=dlr, betas=(args.betas[0], args.betas[1])) if args.classes[1] else None
+                          "ds_optimizier": torch.optim.Adam(nets.netD_style.parameters(), lr=dlr, betas=(args.betas[0], args.betas[1])) if args.classes[1] else None,
+                          "con_optimizier": torch.optim.Adam(nets.netContr.parameters(), lr=1e-4) if args.contrast_t else None
                           }) 
     # if args.single_mod:
     #     nets.netG2 = copy.deepcopy(nets.netG).to(device)
@@ -124,6 +126,7 @@ def train(args):
     ii = args.sepoch * len(syn_loader)
     # ssim = tgm.losses.SSIM(args.img_size-1, reduction='mean')
     ssim = SSIM_Loss(win_size=3, data_range=1.0, size_average=True, channel=3)
+    criterionL1 = torch.nn.L1Loss()
     criterionTV = TVLoss(TVLoss_weight=1)
     # logdir = "log/" + args.save_path
     # log_writer = LogWriter(logdir)
@@ -319,7 +322,11 @@ def train(args):
                     #X = (X + 1) / 2  # [-1, 1] => [0, 1]
                     #Y = (Y + 1) / 2  
                     ssim_loss = ssim((x_fake + 1) / 2, (paired_img+1).to(device) /2)
-                    args.w_ssim = 0 if (epoch<10 or epoch<100) else 1
+                    args.w_ssim = 0 if (epoch<10 or (epoch<100 and args.preloaded_data)) else 1
+                if args.contrast_t:
+                    l1_loss = criterionL1(nets.netContr(x_fake), nets.netContr(paired_img.to(device)) ) #non mi convince
+        
+
                 else:
                     ssim_loss = torch.tensor(0)
                 if args.tv_loss:
@@ -372,6 +379,7 @@ def train(args):
                     optims.se_optimizier.step()
                     optims.ds_optimizier.step()
                 moving_average(nets.netG, nets.netG_use, beta=0.999)
+
 
                 if (i + 0) % args.logs_every == 0:
                     all_losses = dict()
