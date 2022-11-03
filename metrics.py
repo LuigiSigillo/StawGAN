@@ -749,7 +749,8 @@ def evaluation(args):
     try:
         from models_quat import Generator
         net_G = Generator(in_c=in_c_gen + args.c_dim, mid_c=args.G_conv, layers=2, s_layers=3, affine=True, last_ac=True,
-                            colored_input=args.color_images, wav=args.wavelet_type,real=args.real, qsn=args.qsn, phm=args.phm, classes=args.classes, lab=args.lab).to(device)
+                     colored_input=args.color_images, wav=args.wavelet_type,real=args.real, qsn=args.qsn, phm=args.phm, 
+                     lab=args.lab, classes= args.classes, groupnorm=args.groupnorm).to(device)
     except:    
         from models import Generator
         print("Legacy generator")

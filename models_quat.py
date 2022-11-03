@@ -401,7 +401,6 @@ class Generator(nn.Module):
         
         if self.qsn or self.phm:
             img = torch.cat((img, torch.zeros(img.shape[0], self.in_c-img.shape[1] ,img.shape[2],img.shape[3]).to(device)), dim=1).to(device)
-        
         x_1 = self.img_encoder(img)
         s_1 = self.share_net(x_1)
         if self.classes[1]:
