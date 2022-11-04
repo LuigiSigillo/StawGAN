@@ -11,8 +11,7 @@ import torch.nn.functional as F
 from wavelet import wavelet_wrapper
 from torch.nn.utils.parametrizations import spectral_norm
 device = "cuda" if torch.cuda.is_available() else "cpu"
-from torchvision.transforms.functional import adjust_contrast,adjust_sharpness,adjust_gamma
-
+import torchvision.transforms.functional as TF
 
 # def moving_average_update(statistic, curr_value, momentum):
 #     term_1 = (1 - momentum) * statistic
@@ -425,7 +424,7 @@ class Generator(nn.Module):
         #print(res_img.shape)#torch.Size([4, 1, 128, 128])
         if self.last_ac:
             res_img = torch.tanh(res_img)
-        if mode == "train" and not self.sep:# and random.random() > 0.5:          
+        if mode == "train" and not self.sep:          
             if self.lab:
                 tumor = torch.cat([tumor[:,:1,:,:],c],dim=1)
             elif self.classes[0] and not self.classes[1]:
@@ -823,7 +822,7 @@ class ContrastNet(nn.Module):
         self.conv1 = nn.Conv2d(3, 6, 5)
         self.pool = nn.MaxPool2d(2, 2)
         self.conv2 = nn.Conv2d(6, 16, 5)
-        self.fc1 = nn.Linear(16 * 5 * 5, 120)
+        self.fc1 = nn.Linear(pow(2,4)*pow(61,2), 120)
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, 3)
 
@@ -836,3 +835,12 @@ class ContrastNet(nn.Module):
         x = self.fc3(x)
         return x
 
+    def apply_transforms(self,img_b, coeff):
+        x,y,z = coeff[:,0], coeff[:,1], coeff[:,2]
+        imgs = [TF.adjust_contrast(img, abs(x)[i]) for i,img in enumerate(img_b)]
+        img_b = torch.stack(imgs) 
+        imgs = [TF.adjust_sharpness(img, abs(y)[i]) for i,img in enumerate(img_b)]
+        img_b = torch.stack(imgs) 
+        imgs = [TF.adjust_gamma(img, abs(z)[i]) for i,img in enumerate(img_b)]
+        img_b = torch.stack(imgs) 
+        return img_b

@@ -90,14 +90,13 @@ def train(args):
                         "netH":  ShapeUNet(img_ch=in_c, output_ch=1, mid=args.h_conv,real=args.real, qsn=args.qsn, phm=args.phm),
                         "netSE": StyleEncoder(img_size=args.img_size).to(device) if args.classes[1] else None,
                         "netD_style" : DiscriminatorStyle(img_size=args.img_size).to(device) if args.classes[1] else None,
-                        "netContr": ContrastNet() if args.contrast_t else None
+                        "netContr": ContrastNet().to(device) if args.contrast_t else None
                         })
     
     nets.netG.to(device)
     nets.netD_i.to(device)
     nets.netD_t.to(device)
     nets.netH.to(device)
-
 
     optims = munch.Munch({"g_optimizier": torch.optim.Adam(nets.netG.parameters(), lr=glr, betas=(args.betas[0], args.betas[1])),
                           "di_optimizier": torch.optim.Adam(nets.netD_i.parameters(), lr=dlr, betas=(args.betas[0], args.betas[1])),
@@ -210,7 +209,7 @@ def train(args):
                 # Compute loss with fake whole images.
                 with torch.no_grad():
                     yy_trg, style_trg, x_segm = get_style(nets,y_trg=c_classes_trg, x_segm= t_imgs_classes_trg, x_real=x_real if args.classes_image else None)  if args.classes[1] else (None, None, None)
-
+                    #random.random() > 0.5
                     x_fake, t_fake = nets.netG(x_real, t_img, c_trg, wav_type=args.wavelet_type, style=style_trg,  class_label=c_classes_trg if (args.classes[0] and not args.classes[1]) else None)
                 # plt.imshow(  x_fake[2].cpu().detach().permute(1, 2, 0).numpy(), cmap='gray')
                 # plt.savefig('x-fake greyscaled')
@@ -316,20 +315,21 @@ def train(args):
                     # optims.ds_optimizier.zero_grad()
                     # d_style_loss.backward()
                     # optims.ds_optimizier.step()
-                if args.loss_ssim:
+                if args.loss_ssim and ((epoch>10 and not args.preloaded_data) or (epoch>100 and args.preloaded_data)):
                     # x_fake: (N,3,H,W) a batch of normalized images (-1 ~ 1)
                     # paired_img: (N,3,H,W)  
                     #X = (X + 1) / 2  # [-1, 1] => [0, 1]
                     #Y = (Y + 1) / 2  
                     ssim_loss = ssim((x_fake + 1) / 2, (paired_img+1).to(device) /2)
-                    args.w_ssim = 0 if (epoch<10 or (epoch<100 and args.preloaded_data)) else 1
-                #TODO
-                if args.contrast_t:
-                    l1_loss = criterionL1(nets.netContr(x_fake), nets.netContr(paired_img.to(device)) ) #non mi convince
-        
-
                 else:
                     ssim_loss = torch.tensor(0)
+                if args.contrast_t:
+                    coeff = nets.netContr(x_fake)
+                    l1_loss = criterionL1(nets.netContr.apply_transforms(x_fake, coeff), paired_img.to(device)) #non mi convince
+                else:
+                    l1_loss = torch.tensor(0)
+
+
                 if args.tv_loss:
                     loss_tv = criterionTV(x_fake)
                 else:
@@ -360,7 +360,7 @@ def train(args):
                     torch.abs((denorm(x_fake) if not args.lab else x_fake) * mask - (denorm(t_fake) if not args.lab else t_fake)))
                 # Backward and optimize.
                 gi_loss = g_loss_fake + args.w_cycle * g_loss_rec + \
-                    g_loss_cls * args.w_g_c  +ssim_loss*args.w_ssim + loss_tv*args.w_tv + (g_class_loss_cls if args.classes[0] and not args.classes[1] else torch.tensor(0).to(device)) # + shape_loss* args.w_shape
+                    g_loss_cls * args.w_g_c  +ssim_loss*args.w_ssim + loss_tv*args.w_tv + l1_loss + (g_class_loss_cls if args.classes[0] and not args.classes[1] else torch.tensor(0).to(device)) # + shape_loss* args.w_shape
                 gt_loss = gt_loss + args.w_cycle * g_loss_rec_t + \
                     shape_loss_t * args.w_shape + cross_loss * args.w_g_cross
                 style_comp = 0 if not args.classes[1] else g_style_loss *args.w_shape
@@ -373,12 +373,18 @@ def train(args):
                 if args.classes[1]:
                     optims.se_optimizier.zero_grad()
                     optims.ds_optimizier.zero_grad()
+                if args.contrast_t:
+                    optims.con_optimizier.zero_grad()
+
                 g_loss.backward()
                 optims.g_optimizier.step()
                 optims.h_optimizier.step()
                 if args.classes[1]:
                     optims.se_optimizier.step()
                     optims.ds_optimizier.step()
+                if args.contrast_t:
+                    optims.con_optimizier.step()
+
                 moving_average(nets.netG, nets.netG_use, beta=0.999)
 
 
@@ -398,6 +404,8 @@ def train(args):
                     all_losses["train/G/loss_ssim"] = ssim_loss.item()
                     all_losses["train/G/loss_shape_t"] = shape_loss_t.item()
                     all_losses["train/G/loss_cross"] = cross_loss.item()
+                    all_losses["train/G/loss_tv"] = loss_tv.item()
+                    all_losses["train/G/l1_loss"] = l1_loss.item()
                     if args.classes[1]:
                         all_losses["train/G/loss_style"] = g_l_sty.item()
                         all_losses["train/G/loss_adva"] = g_loss_adva.item()

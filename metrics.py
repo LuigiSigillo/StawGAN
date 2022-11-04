@@ -142,15 +142,15 @@ def calculate_ignite_fid(args):
             print("evaluating " + src + " to " + to)
             print("path predictions:", eval_path, "\n path true:", p)
             pred = jpg_series_reader(args.img_size, eval_path)
-            true = jpg_series_reader(args.img_size, p, pred.shape[0]) 
+            true = jpg_series_reader(args.img_size, p, pred.shape[0], args.remove_dark_samples if 'trainimg' in p else False) 
             x = fid_ignite(true, pred)
             val_is = inception_score_ignite(pred)
             
             #to compare to the paired images
             pred = jpg_series_reader(args.img_size,eval_path)
             true = jpg_series_reader(args.img_size,eval_root +"/"+to+"_to_val"+src+"/ground_truth", pred.shape[0])
-            val_ssim = calculate_SSIM(true/255,pred/255)
-            val_psnr = psnr_ignite(true,pred)
+            val_ssim = calculate_SSIM(true/255,pred[:len(true)]/255)
+            val_psnr = psnr_ignite(true,pred[:len(true)])
             
             IS_scores["IS-ignite/" + src + " to " +to ] = float(val_is)
             fid_scores["FID-ignite/" + src + " to " + to] = float(x)
@@ -444,16 +444,21 @@ def png_series_reader(dir):
     #V = V.astype(bool)
     return V
 
-def jpg_series_reader(img_size,dir, mlen=None):
+def jpg_series_reader(img_size,dir, mlen=None, remove_dark=False):
     V = []
     jpg_file_list = glob.glob(dir + '/*.jpg')
     png_file_list = glob.glob(dir + '/*.png')
     tot_list = (png_file_list+jpg_file_list)
     random.shuffle(tot_list)
+    if remove_dark:
+        with open('/home/luigi/Documents/drone-targan/dataset/train/dark_samples.txt','r') as f:
+            my_list=f.readlines()
+        temp = [line[:-1] for line in my_list]
+        tot_list = list(set(tot_list) -set(temp))
     box = (100, 100, 740, 612)
     if mlen!=None:
         tot_list = tot_list[:mlen]
-    for filename in tqdm(tot_list[:1469]): #changed
+    for filename in tqdm(tot_list): #changed
         img = Image.open(filename).convert("RGB")
         if "train" in dir or img.size[0] != img_size:
             img = img.crop(box)
@@ -707,7 +712,7 @@ def calculae_metrics_translation(args, net_G):
     
     if not args.preloaded_data_eval:
         eval_dataset_imgr, eval_dataset_img = DefaultDataset(args.dataset_path+"/val/valimgr"), \
-                                            DefaultDataset(args.dataset_path+"/val/valimg")
+                                            DefaultDataset(args.dataset_path+"/val/valimg",remove_dark=args.remove_dark_samples)
         to_get_classes = DroneVeichleDataset(path=args.dataset_path, split='val', colored_data=args.color_images,img_size=args.img_size,
                                             paired_image=args.loss_ssim, classes=args.classes[0], single_mod=(args.single_mod, 'ir' if 'ir' in args.experiment_name else 'rgb'),
                                             debug = "debug" in args.mode, remove_dark=args.remove_dark_samples) if args.classes[0] else None
