@@ -5,7 +5,7 @@ from PIL import Image
 import numpy as np
 # import sys
 # import cv2
-
+from torchvision import transforms
 # from models_quat import Generator, DiscriminatorStyle, StyleEncoder
 
 # # from dataloader import label_preprocess
@@ -13,40 +13,73 @@ import numpy as np
 
 # # import matplotlib.pyplot as plt
 # # grayscale = tv.transforms.Grayscale(num_output_channels=1)
-image = Image.open('dataset/train/trainimg/00001.jpg')
-imager = Image.open('dataset/train/trainimgr/00001.jpg').convert("RGB")
-# print(np.array(imager))
-import torch
-import torchvision.transforms.functional as Fa
-import torch.nn.functional as F
+# image = Image.open('dataset/train/trainimg/00001.jpg')
+# imager = Image.open('dataset/train/trainimgr/00001.jpg').convert("RGB")
+# # print(np.array(imager))
+# import torch
+# import torch.nn.functional as F
 
-img = Image.open('results/targan_ssim_adj/valimgr_to_valimg/1456.png')
-img = Fa.adjust_contrast(img, 1)
-img = Fa.adjust_sharpness(img, 1)
-img = Fa.adjust_gamma(img, 1)
-img.save('rr.jpg')
-from torch import nn
-class ContrastNet(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.conv1 = nn.Conv2d(3, 6, 5)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(6, 16, 5)
-        self.fc1 = nn.Linear(pow(2,4)*pow(61,2), 120)
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, 3)
+# img = Image.open('results/targan_ssim_adj/valimgr_to_valimg/1456.png')
+# # img = Fa.adjust_contrast(img, 1)
+# # img = Fa.adjust_sharpness(img, 1)
+# # img = Fa.adjust_gamma(img, 1)
+# # img.save('rr.jpg')
+# from torch import nn
+# class ContrastNet(nn.Module):
+#     def __init__(self):
+#         super().__init__()
+#         self.conv1 = nn.Conv2d(3, 6, 5)
+#         self.pool = nn.MaxPool2d(2, 2)
+#         self.conv2 = nn.Conv2d(6, 16, 5)
+#         self.fc1 = nn.Linear(pow(2,4)*pow(61,2), 120)
+#         self.fc2 = nn.Linear(120, 84)
+#         self.fc3 = nn.Linear(84, 3)
 
-    def forward(self, x):
-        x = self.pool(F.relu(self.conv1(x)))
-        x = self.pool(F.relu(self.conv2(x)))
-        x = torch.flatten(x, 1) # flatten all dimensions except batch
-        print(x.shape)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
+#     def forward(self, x):
+#         x = self.pool(F.relu(self.conv1(x)))
+#         x = self.pool(F.relu(self.conv2(x)))
+#         x = torch.flatten(x, 1) # flatten all dimensions except batch
+#         print(x.shape)
+#         x = F.relu(self.fc1(x))
+#         x = F.relu(self.fc2(x))
+#         x = self.fc3(x)
+#         return x
 
-print(ContrastNet()(torch.randn(2,3,256,256)))
+#     def apply_transforms(self,img_b, coeff):
+#         self.x,self.y,self.z = coeff[:,0], coeff[:,1], coeff[:,2]
+#         imgs = [TF.adjust_contrast(img, abs(self.x)[i]) for i,img in enumerate(img_b)]
+#         img_b = torch.stack(imgs) 
+#         imgs = [TF.adjust_sharpness(img, abs(self.y)[i]) for i,img in enumerate(img_b)]
+#         img_b = torch.stack(imgs) 
+#         imgs = [TF.adjust_gamma(img, abs(self.z)[i]) for i,img in enumerate(img_b)]
+#         img_b = torch.stack(imgs) 
+#         return img_b
+
+# a = (ContrastNet()(torch.randn(5,3,256,256)))
+
+# import torchvision.transforms.functional as TF
+# import random
+
+# class MyTransform:
+#     """Rotate by one of the given angles."""
+
+#     def __init__(self, x=1,y=1,z=1):
+#         self.x, self.y, self.z = x,y,z
+
+#     def __call__(self, img_b, coeff):
+#         self.x,self.y,self.z = coeff[:,0], coeff[:,1], coeff[:,2]
+#         print(self.x,self.y,self.z)
+#         imgs = [TF.adjust_contrast(img, abs(self.x)[i]) for i,img in enumerate(img_b)]
+#         img_b = torch.stack(imgs) 
+#         imgs = [TF.adjust_sharpness(img, abs(self.y)[i]) for i,img in enumerate(img_b)]
+#         img_b = torch.stack(imgs) 
+#         imgs = [TF.adjust_gamma(img, abs(self.z)[i]) for i,img in enumerate(img_b)]
+#         img_b = torch.stack(imgs) 
+#         return img_b
+
+# rotation_transform = MyTransform()
+# rotation_transform(torch.randn(2,3,256,256), a)
+
 # # color_palette = [(255,0,0), (128,0,128), (0,192,0), (0,100,0), (200,200,0)]
 # # dict_palette = {"car":color_palette[0], 
 # #                 "feright_car": color_palette[1],
@@ -306,10 +339,30 @@ print(ContrastNet()(torch.randn(2,3,256,256)))
 
 
 
-from models_quat import AdainResBlk
-import torch
+# from models_quat import AdainResBlk
+# import torch
 
-m=AdainResBlk(dim_in=224, dim_out=64, style_dim=64, w_hpf=0)
-x = m(torch.randn(4, 224, 128, 128), torch.randn(1,64))
-print(x.shape)
-# print(m(x, torch.randn(1,64)).shape)
+# m=AdainResBlk(dim_in=224, dim_out=64, style_dim=64, w_hpf=0)
+# x = m(torch.randn(4, 224, 128, 128), torch.randn(1,64))
+# print(x.shape)
+# # print(m(x, torch.randn(1,64)).shape)
+
+from dataloader import is_bright
+import os
+my_list = []
+
+for fname in os.listdir('/home/luigi/Documents/drone-targan/dataset/train/trainimg'):
+    img = Image.open(os.path.join('/home/luigi/Documents/drone-targan/dataset/train/trainimg',fname)).convert('RGB')
+    if not is_bright(np.asarray(img)):
+        my_list.append(fname)
+# with open('/home/luigi/Documents/drone-targan/dataset/val/dark_samples.txt','r') as f:
+#     my_list=f.readlines()
+
+# temp = [line[:-1] for line in my_list]
+
+# print(temp)
+with open('/home/luigi/Documents/drone-targan/dataset/train/dark_samples.txt', 'w') as fp:
+    for item in my_list:
+        # write each item on a new line
+        fp.write("%s\n" % item)
+    print('Done')

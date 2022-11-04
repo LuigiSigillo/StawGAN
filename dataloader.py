@@ -157,7 +157,7 @@ class DroneVeichleDataset(Dataset):
                     # convert image to numpy array
                     img = np.asarray(img)
                     if self.remove_dark_samples:
-                        text = 1 if isbright(img) else 0
+                        text = 1 if is_bright(img) else 0
                         if text!=1:
                             continue
                         cooo+=text
@@ -191,7 +191,7 @@ class DroneVeichleDataset(Dataset):
                     # convert image to numpy array
                     img = np.asarray(img)
                     if self.remove_dark_samples:
-                        text = 1 if isbright(img) else 0
+                        text = 1 if is_bright(img) else 0
                         if text!=1:
                             continue
                         cooo+=text
@@ -524,7 +524,7 @@ def save_tensors_dataset(path="dataset", split="train", slices=19, max_length_sl
 # save_tensors_dataset(path="dataset", split="val", slices=2, max_length_slices=2000, img_size=256,  my_folder = "dataset/tensors/tensors_classes")
 
 class DefaultDataset(Dataset):
-    def __init__(self, root, img_size=256, transform=None, kaist=False):
+    def __init__(self, root, img_size=256, transform=None, kaist=False, remove_dark=False):
         if not kaist:
             self.samples = os.listdir(root)
             self.samples.sort()
@@ -556,7 +556,13 @@ class DefaultDataset(Dataset):
         transforms.Resize([img_size, img_size]),
         transforms.ToTensor(),
         transforms.Normalize(mean=mean, std=std)
-    ])
+        ])
+        if remove_dark:
+            with open('/home/luigi/Documents/drone-targan/dataset/val/dark_samples.txt','r') as f:
+                my_list=f.readlines()
+            temp = [line[:-1] for line in my_list]
+            self.samples= list(set(self.samples) -set(temp))
+    
     def __getitem__(self, index):
         fname = self.samples[index]
         img = Image.open(os.path.join(self.root,fname)).convert('RGB')
@@ -571,7 +577,7 @@ class DefaultDataset(Dataset):
 
 
 
-def isbright(image, dim=10, thresh=0.5):
+def is_bright(image, dim=10, thresh=0.5):
     # Resize image to 10x10
     if len(image.shape) <3:
         image = np.repeat(image[...,None],3,axis=2)
