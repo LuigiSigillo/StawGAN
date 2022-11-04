@@ -634,7 +634,7 @@ def calculate_metrics_segmentation(args, net_G):
     for idx in tqdm(range(tot_rep)):
         if args.preloaded_data:
             syneval_dataset_tot = DroneVeichleDataset(path=args.dataset_path, split='val', colored_data=args.color_images,img_size=args.img_size, classes=args.classes[0])
-            syneval_dataset_tot.load_dataset(path=args.dataset_path+"/tensors/tensors_paired",split="val", idx=str(idx), 
+            syneval_dataset_tot.load_dataset(path=args.dataset_path+args.tensors_path,split="val", idx=str(idx), 
                                             img_size=args.img_size, colored_data=args.color_images,paired_image=args.loss_ssim, classes=args.classes[0], lab=args.lab,
                                             single_mod=(args.single_mod, 'ir' if 'ir' in args.experiment_name else 'rgb'),debug = "debug" in args.mode, remove_dark=args.remove_dark_samples)
         else:
