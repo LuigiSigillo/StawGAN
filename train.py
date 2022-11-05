@@ -133,6 +133,10 @@ def train(args):
         wandb.run.name = args.experiment_name
         for epoch in tqdm(range(args.sepoch, args.epoch), initial=args.sepoch, total=args.epoch):
             for i, batch in tqdm(enumerate(syn_loader), total=len(syn_loader)):
+                #alternatively train target part
+                mode='train' if random.random() > .5 else 'no_target'
+                if not args.alternate_target:
+                    mode = 'train'
                 if args.classes[0]:
                     (x_real, t_img, paired_img, mask, label_org, t_imgs_classes_org, classes_org) = batch
                     dim_classes_label = 6
@@ -209,8 +213,7 @@ def train(args):
                 # Compute loss with fake whole images.
                 with torch.no_grad():
                     yy_trg, style_trg, x_segm = get_style(nets,y_trg=c_classes_trg, x_segm= t_imgs_classes_trg, x_real=x_real if args.classes_image else None)  if args.classes[1] else (None, None, None)
-                    #random.random() > 0.5
-                    x_fake, t_fake = nets.netG(x_real, t_img, c_trg, wav_type=args.wavelet_type, style=style_trg,  class_label=c_classes_trg if (args.classes[0] and not args.classes[1]) else None)
+                    x_fake, t_fake = nets.netG(x_real, t_img, c_trg, mode=mode,wav_type=args.wavelet_type, style=style_trg,  class_label=c_classes_trg if (args.classes[0] and not args.classes[1]) else None)
                 # plt.imshow(  x_fake[2].cpu().detach().permute(1, 2, 0).numpy(), cmap='gray')
                 # plt.savefig('x-fake greyscaled')
                 # raise Exception
@@ -233,7 +236,7 @@ def train(args):
                 d_loss_gp = gradient_penalty(out_src, x_hat, device)
 
                 # compute loss with target images
-                if index.shape[0] != 0:
+                if index.shape[0] != 0 and mode =='train':
                     out_src, out_cls, out_class_cls = nets.netD_t(
                         torch.index_select(t_img, dim=0, index=index)) if not args.single_mod else nets.netD_t(torch.index_select(paired_img * mask, dim=0, index=index)) 
                     d_org = torch.index_select(d_org, dim=0, index=index)
@@ -293,7 +296,7 @@ def train(args):
                 #  3. Train the generator
                 # Original-to-target domain.
                 x_fake, t_fake = nets.netG(
-                    x_real, t_img, c_trg, wav_type=args.wavelet_type, style=style_trg, class_label=c_classes_trg if (args.classes[0] and not args.classes[1]) else None)
+                    x_real, t_img, c_trg, mode=mode,wav_type=args.wavelet_type, style=style_trg, class_label=c_classes_trg if (args.classes[0] and not args.classes[1]) else None)
                 out_src, out_cls, out_class_cls = nets.netD_i(x_fake)
                 g_loss_fake = -torch.mean(out_src)
                 g_loss_cls = F.binary_cross_entropy_with_logits(
@@ -306,7 +309,7 @@ def train(args):
                 # Target-to-original domain.
                 yy_org, style_org, x_segm = get_style(nets,y_trg=c_classes_org, x_segm= t_imgs_classes_org, x_real=x_real if args.classes_image else None) if args.classes[1] else ( None, None, None)
 
-                x_reconst, t_reconst = nets.netG(x_fake, t_fake, c_org, wav_type=args.wavelet_type, style=style_org, class_label=c_classes_org if (args.classes[0] and not args.classes[1]) else None)
+                x_reconst, t_reconst = nets.netG(x_fake, t_fake, c_org, mode=mode, wav_type=args.wavelet_type, style=style_org, class_label=c_classes_org if (args.classes[0] and not args.classes[1]) else None)
                 g_loss_rec = torch.mean(torch.abs(x_real - x_reconst))
                 if args.classes[1]:
                     g_loss_adva, g_l_sty = compute_g_loss(nets, args, x_real=x_real, t_img=t_img, y_trg=c_classes_trg, c_trg=c_trg, x_segm=t_imgs_classes_trg, c_classes_org=c_classes_org)
@@ -335,7 +338,7 @@ def train(args):
                 else:
                     loss_tv = torch.tensor(0)
 
-                if index.shape[0] != 0:
+                if index.shape[0] != 0 and mode=='train':
                     out_src, out_cls, out_class_cls = nets.netD_t(
                         torch.index_select(t_fake, dim=0, index=index))
                     g_trg = torch.index_select(g_trg, dim=0, index=index)
@@ -354,10 +357,13 @@ def train(args):
                 # print(nets.netH(t_fake).shape, mask.shape)
 
                 # mask.repeat(1, 3, 1, 1).float()
-                shape_loss_t = F.mse_loss(nets.netH(t_fake), mask.float())
-                g_loss_rec_t = torch.mean(torch.abs(t_img - t_reconst))
-                cross_loss = torch.mean(
-                    torch.abs((denorm(x_fake) if not args.lab else x_fake) * mask - (denorm(t_fake) if not args.lab else t_fake)))
+                if mode =='train':
+                    shape_loss_t = F.mse_loss(nets.netH(t_fake), mask.float())
+                    g_loss_rec_t = torch.mean(torch.abs(t_img - t_reconst))
+                    cross_loss = torch.mean(
+                        torch.abs((denorm(x_fake) if not args.lab else x_fake) * mask - (denorm(t_fake) if not args.lab else t_fake)))
+                else:
+                    shape_loss_t, g_loss_rec_t, cross_loss = torch.FloatTensor([0]).to(device), torch.FloatTensor([0]).to(device), torch.FloatTensor([0]).to(device)
                 # Backward and optimize.
                 gi_loss = g_loss_fake + args.w_cycle * g_loss_rec + \
                     g_loss_cls * args.w_g_c  +ssim_loss*args.w_ssim + loss_tv*args.w_tv + l1_loss + (g_class_loss_cls if args.classes[0] and not args.classes[1] else torch.tensor(0).to(device)) # + shape_loss* args.w_shape

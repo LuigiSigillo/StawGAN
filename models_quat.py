@@ -478,7 +478,8 @@ class Generator(nn.Module):
         # res_img = adjust_contrast(res_img, nets.netContr(res_img)[:,0])
         # res_img = adjust_sharpness(res_img, nets.netContr(res_img)[:,1])
         # res_img = adjust_gamma(res_img, nets.netContr(res_img)[:,2])
-        
+        if mode=='no_target':
+            return res_img,res_img
         return res_img #,tumor_orig+torch.randn_like(img_orig).to(device) #ŧesting
 
 
