@@ -513,7 +513,7 @@ def train(args):
                     if optims[opt] is not None:
                         for param_group in optims[opt].param_groups:
                             param_group['lr'] = new_lr
-                print('updated learning rate: %f' % new_lr)
+                    print(opt,' updated learning rate: %f' % new_lr)
 
 
 
