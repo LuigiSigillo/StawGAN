@@ -469,6 +469,10 @@ def train(args):
                     args.net_name = 'netSE'
                     save_state_net(nets.netSE, args, epoch + 1,
                                 optims.se_optimizier, args.experiment_name)
+                if args.contrast_t:
+                    args.net_name = 'netContr'
+                    save_state_net(nets.netContr, args, epoch + 1,
+                                optims.con_optimizier, args.experiment_name)
             if (epoch+1) % args.eval_every == 0:
                 psnr_ignite, fid_dict, dice_dict, s_score_dict, iou_dict, IS_ignite_dict, fid_ignite_dict, mae_dict, ssim_dict = calculate_all_metrics(args, nets.netG)
                 wandb.log(dict(psnr_ignite), step=ii + 1, commit=False)
