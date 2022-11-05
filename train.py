@@ -133,7 +133,8 @@ def train(args):
         wandb.run.name = args.experiment_name
         for epoch in tqdm(range(args.sepoch, args.epoch), initial=args.sepoch, total=args.epoch):
             #alternatively train target part
-            mode='train' if random.random() > .5 else 'no_target'
+            #mode='train' if random.random() > .5 else 'no_target'
+            mode='train' if epoch%2==0 else 'no_target'
             if not args.alternate_target:
                 mode = 'train'
             for i, batch in tqdm(enumerate(syn_loader), total=len(syn_loader)):

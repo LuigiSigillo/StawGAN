@@ -39,7 +39,7 @@ def tuple_type(strings):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-mode', type=str, default='traindebug')
+    parser.add_argument('-mode', type=str, default='train')
     parser.add_argument('-dataset', type=str, default='droneveichle')
     parser.add_argument('-dataset_path', type=str, default='dataset')
     parser.add_argument('-experiment_name', type=str, default='testing')
