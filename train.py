@@ -132,11 +132,11 @@ def train(args):
     with wandb.init(config=args, project="targan_drone") as run:
         wandb.run.name = args.experiment_name
         for epoch in tqdm(range(args.sepoch, args.epoch), initial=args.sepoch, total=args.epoch):
+            #alternatively train target part
+            mode='train' if random.random() > .5 else 'no_target'
+            if not args.alternate_target:
+                mode = 'train'
             for i, batch in tqdm(enumerate(syn_loader), total=len(syn_loader)):
-                #alternatively train target part
-                mode='train' if random.random() > .5 else 'no_target'
-                if not args.alternate_target:
-                    mode = 'train'
                 if args.classes[0]:
                     (x_real, t_img, paired_img, mask, label_org, t_imgs_classes_org, classes_org) = batch
                     dim_classes_label = 6
