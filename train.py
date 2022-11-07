@@ -511,7 +511,7 @@ def train(args):
                     img_size=args.img_size, colored_data=args.color_images, paired_image=args.loss_ssim,lab=args.lab)
                 syn_loader = DataLoader(syn_dataset, batch_size=args.batch_size, shuffle=True)
             
-            if epoch >args.epoch//2:
+            if args.decay and epoch >args.epoch//2:
                 decay_frac = (epoch - args.epoch//2) / (args.epoch//2)
                 for opt in optims:
                     new_lr = args.ttur * (1 - decay_frac) if opt.startswith('d') else args.lr * (1 - decay_frac)

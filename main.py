@@ -73,6 +73,7 @@ if __name__ == '__main__':
     parser.add_argument("-contrast_t", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
     parser.add_argument('-weight_l1', type=float, default=1)
     parser.add_argument("-alternate_target", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
+    parser.add_argument("-decay", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
 
     parser.add_argument("-real", type=str2bool, nargs='?', const=True, default=True, help="Activate nice mode.")
     parser.add_argument("-qsn", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
