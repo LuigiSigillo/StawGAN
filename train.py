@@ -135,11 +135,11 @@ def train(args):
         wandb.run.name = args.experiment_name
         for epoch in tqdm(range(args.sepoch, args.epoch), initial=args.sepoch, total=args.epoch):
             #alternatively train target part
-            #mode='train' if random.random() > .5 else 'no_target'
             mode='train' if epoch%2==0 else 'no_target'
             if not args.alternate_target:
                 mode = 'train'
             for i, batch in tqdm(enumerate(syn_loader), total=len(syn_loader)):
+                #mode='train' if random.random() > .5 else 'no_target'
                 if args.classes[0]:
                     (x_real, t_img, paired_img, mask, label_org, t_imgs_classes_org, classes_org) = batch
                     dim_classes_label = 6
@@ -330,9 +330,8 @@ def train(args):
                 else:
                     ssim_loss = torch.tensor(0)
                 if args.contrast_t:
-                    #coeff = nets.netContr(x_fake)
-                    # l1_loss = criterionL1(nets.netContr.apply_transforms(x_fake, coeff), paired_img.to(device))
-                    l1_loss = criterionL1(x_fake, paired_img.to(device))
+                    coeff = nets.netContr(x_fake)
+                    l1_loss = criterionL1(nets.netContr.apply_transforms(x_fake, coeff), paired_img.to(device)) *0.5 + criterionL1(x_fake, paired_img.to(device)) *0.5
                 else:
                     l1_loss = torch.tensor(0)
 
