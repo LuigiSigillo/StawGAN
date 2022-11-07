@@ -377,7 +377,7 @@ class DroneVeichleDataset(Dataset):
                             torch.from_numpy(paired_img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
                 # paired_img = torch.from_numpy(paired_img).type(torch.FloatTensor).permute(2, 0, 1)
             else:
-                paired_img = torch.from_numpy(paired_img).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1)
+                paired_img = torch.from_numpy(paired_img).type(torch.FloatTensor).permute(2, 0, 1)
             if t_imgs_classes is not None:
                 t_imgs_classes = [torch.from_numpy(t_img_class).type(torch.FloatTensor).unsqueeze(dim=0).repeat(3,1,1) for t_img_class in t_imgs_classes]
 

@@ -329,7 +329,7 @@ def train(args):
                     ssim_loss = torch.tensor(0)
                 if args.contrast_t:
                     coeff = nets.netContr(x_fake)
-                    l1_loss = criterionL1(nets.netContr.apply_transforms(x_fake, coeff), paired_img.to(device)) #non mi convince
+                    l1_loss = criterionL1(nets.netContr.apply_transforms(x_fake, coeff), paired_img.to(device))
                 else:
                     l1_loss = torch.tensor(0)
 
@@ -367,7 +367,7 @@ def train(args):
                     shape_loss_t, g_loss_rec_t, cross_loss = torch.FloatTensor([0]).to(device), torch.FloatTensor([0]).to(device), torch.FloatTensor([0]).to(device)
                 # Backward and optimize.
                 gi_loss = g_loss_fake + args.w_cycle * g_loss_rec + \
-                    g_loss_cls * args.w_g_c  +ssim_loss*args.w_ssim + loss_tv*args.w_tv + l1_loss + (g_class_loss_cls if args.classes[0] and not args.classes[1] else torch.tensor(0).to(device)) # + shape_loss* args.w_shape
+                    g_loss_cls * args.w_g_c  +ssim_loss*args.w_ssim + loss_tv*args.w_tv + l1_loss*args.weight_l1 + (g_class_loss_cls if args.classes[0] and not args.classes[1] else torch.tensor(0).to(device)) # + shape_loss* args.w_shape
                 gt_loss = gt_loss + args.w_cycle * g_loss_rec_t + \
                     shape_loss_t * args.w_shape + cross_loss * args.w_g_cross
                 style_comp = 0 if not args.classes[1] else g_style_loss *args.w_shape
@@ -519,6 +519,10 @@ def train(args):
                         for param_group in optims[opt].param_groups:
                             param_group['lr'] = new_lr
                     print(opt,' updated learning rate: %f' % new_lr)
+                #test
+                args.w_ssim = args.w_ssim * (1 - decay_frac)
+                args.tv_loss = args.tv_loss * (1 - decay_frac)
+                args.w_cycle = args.w_cycle * (1 - decay_frac)
 
 
 

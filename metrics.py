@@ -140,8 +140,9 @@ def calculate_ignite_fid(args):
                 to = "valimg"
  
             print("evaluating " + src + " to " + to)
-            print("path predictions:", eval_path, "\n path true:", p)
+            print("path predictions:", eval_path)
             pred = jpg_series_reader(args.img_size, eval_path)
+            print("path true:", p)
             true = jpg_series_reader(args.img_size, p, pred.shape[0], args.remove_dark_samples if 'trainimg' in p else False) 
             x = fid_ignite(true, pred)
             val_is = inception_score_ignite(pred)
@@ -442,6 +443,7 @@ def png_series_reader(dir):
         V.append(image)
     V = np.array(V, order='A')
     #V = V.astype(bool)
+    print('loaded images: ',len(V))
     return V
 
 def jpg_series_reader(img_size,dir, mlen=None, remove_dark=False):
@@ -466,6 +468,7 @@ def jpg_series_reader(img_size,dir, mlen=None, remove_dark=False):
         img = np.asarray(img)
         V.append(img.transpose(2, 0, 1))
     V = np.array(V, order='A')
+    print('loaded images: ',len(V))
     return V
 
 
@@ -740,6 +743,7 @@ def calculate_all_metrics(args, net_G):
     ssim_dict, fid_dict, IS_ignite_dict, fid_ignite_dict ,psnr_ignite = calculae_metrics_translation(args, net_G)
     print(ssim_dict, fid_dict, IS_ignite_dict, fid_ignite_dict ,psnr_ignite)
     dice_dict, s_score_dict, iou_dict, mae_dict = calculate_metrics_segmentation(args, net_G)
+    print(dice_dict, s_score_dict, iou_dict, mae_dict)
     return psnr_ignite, fid_dict, dice_dict, s_score_dict, iou_dict, IS_ignite_dict, fid_ignite_dict, mae_dict, ssim_dict
 
 
@@ -764,7 +768,8 @@ def evaluation(args):
         net_G = Generator(in_c=in_c_gen + args.c_dim, mid_c=args.G_conv, layers=2, s_layers=3, affine=True, last_ac=True,
                             colored_input=args.color_images, wav=args.wavelet_type).to(device)
     ep = str(args.epoch) if not args.preloaded_data else str(args.epoch*10)
-    net_G.load_state_dict(torch.load(args.save_path+"/"+args.experiment_name+"/netG_use_"+ep+"_"+args.experiment_name+".pkl", map_location=device))
+    if args.experiment_name not in ['pearlgan', 'stargan2', 'pix2pix']:
+        net_G.load_state_dict(torch.load(args.save_path+"/"+args.experiment_name+"/netG_use_"+ep+"_"+args.experiment_name+".pkl", map_location=device))
     with wandb.init(config=args, project="targan_drone") as run:
         wandb.run.name = args.experiment_name
         fid_stargan, fid_dict, dice_dict, s_score_dict, iou_dict, IS_ignite_dict, fid_ignite_dict, mae_dict, psnr_dict = calculate_all_metrics(args, net_G)
