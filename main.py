@@ -6,7 +6,7 @@ from metrics import evaluation
 import train
 import train_kaist
 from utils import set_deterministic
-
+from sample import sample
 
 
 def check_errors(args):
@@ -42,6 +42,7 @@ if __name__ == '__main__':
     parser.add_argument('-mode', type=str, default='train')
     parser.add_argument('-dataset', type=str, default='droneveichle')
     parser.add_argument('-dataset_path', type=str, default='dataset')
+    parser.add_argument('-sample_dir', type=str, default='sample')
     parser.add_argument('-experiment_name', type=str, default='testing')
     parser.add_argument('-eval_dir', type=str, default='results')
     parser.add_argument('-save_path', type=str, default='checkpoints')
@@ -120,4 +121,7 @@ if __name__ == '__main__':
         if "debug" in args.mode:
             args.eval_batch_size = 1
         evaluation(args)
-        
+    if "sample" in args.mode:
+        if "debug" in args.mode:
+            args.eval_batch_size = 1
+        sample(args)

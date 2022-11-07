@@ -55,6 +55,8 @@ def train(args):
         idx = 0
         tensors_path = args.tensors_path #"/tensors/tensors_paired"
         args.epoch = 10*args.epoch
+        args.sepoch = 10*args.sepoch
+
         args.save_every = 10*args.save_every
         args.eval_every = 10*args.eval_every
         syn_dataset = DroneVeichleDataset(to_be_loaded=True)
@@ -328,8 +330,9 @@ def train(args):
                 else:
                     ssim_loss = torch.tensor(0)
                 if args.contrast_t:
-                    coeff = nets.netContr(x_fake)
-                    l1_loss = criterionL1(nets.netContr.apply_transforms(x_fake, coeff), paired_img.to(device))
+                    #coeff = nets.netContr(x_fake)
+                    # l1_loss = criterionL1(nets.netContr.apply_transforms(x_fake, coeff), paired_img.to(device))
+                    l1_loss = criterionL1(x_fake, paired_img.to(device))
                 else:
                     l1_loss = torch.tensor(0)
 
