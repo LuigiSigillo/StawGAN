@@ -55,6 +55,8 @@ def train(args):
         idx = 0
         tensors_path = args.tensors_path #"/tensors/tensors_paired"
         args.epoch = 10*args.epoch
+        args.sepoch = 10*args.sepoch
+
         args.save_every = 10*args.save_every
         args.eval_every = 10*args.eval_every
         syn_dataset = DroneVeichleDataset(to_be_loaded=True)
@@ -133,11 +135,11 @@ def train(args):
         wandb.run.name = args.experiment_name
         for epoch in tqdm(range(args.sepoch, args.epoch), initial=args.sepoch, total=args.epoch):
             #alternatively train target part
-            #mode='train' if random.random() > .5 else 'no_target'
             mode='train' if epoch%2==0 else 'no_target'
             if not args.alternate_target:
                 mode = 'train'
             for i, batch in tqdm(enumerate(syn_loader), total=len(syn_loader)):
+                #mode='train' if random.random() > .5 else 'no_target'
                 if args.classes[0]:
                     (x_real, t_img, paired_img, mask, label_org, t_imgs_classes_org, classes_org) = batch
                     dim_classes_label = 6
@@ -329,7 +331,7 @@ def train(args):
                     ssim_loss = torch.tensor(0)
                 if args.contrast_t:
                     coeff = nets.netContr(x_fake)
-                    l1_loss = criterionL1(nets.netContr.apply_transforms(x_fake, coeff), paired_img.to(device))
+                    l1_loss = criterionL1(nets.netContr.apply_transforms(x_fake, coeff), paired_img.to(device)) *0.5 + criterionL1(x_fake, paired_img.to(device)) *0.5
                 else:
                     l1_loss = torch.tensor(0)
 

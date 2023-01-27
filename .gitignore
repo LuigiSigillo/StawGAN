@@ -4,3 +4,4 @@ wandb/*
 test_img/*
 checkpoints/*
 results/*
+sample/*
