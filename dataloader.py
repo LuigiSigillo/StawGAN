@@ -558,7 +558,7 @@ class DefaultDataset(Dataset):
         transforms.Normalize(mean=mean, std=std)
         ])
         if remove_dark:
-            with open('/home/luigi/Documents/drone-targan/dataset/val/dark_samples.txt','r') as f:
+            with open('dataset/val/dark_samples.txt','r') as f:
                 my_list=f.readlines()
             temp = [line[:-1] for line in my_list]
             self.samples= list(set(self.samples) -set(temp))

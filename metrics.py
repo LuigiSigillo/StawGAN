@@ -453,7 +453,7 @@ def jpg_series_reader(img_size,dir, mlen=None, remove_dark=False):
     tot_list = (png_file_list+jpg_file_list)
     random.shuffle(tot_list)
     if remove_dark:
-        with open('/home/luigi/Documents/drone-targan/dataset/train/dark_samples.txt','r') as f:
+        with open('dataset/train/dark_samples.txt','r') as f:
             my_list=f.readlines()
         temp = [line[:-1] for line in my_list]
         tot_list = list(set(tot_list) -set(temp))
