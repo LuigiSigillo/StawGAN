@@ -14,7 +14,7 @@ We introduce a novel model that focuses on enhancing the quality of the target g
 We test our model on aerial images of the DroneVeichle dataset containing RGB-IR paired images.
 The proposed approach produces a more accurate translation with respect to other state-of-the-art image translation models.
 
-### Model Architecture (from [StarGANv2]()) :clapper:
+### Model Architecture :clapper:
 <img src=".png">
 
 ### Results :bar_chart:
