@@ -13,7 +13,7 @@ import torchvision as tv
 import random 
 from tqdm import tqdm
 from torchvision import transforms
-from utils import denorm, label2onehot, rgb2lab, set_deterministic
+from src.utils import denorm, label2onehot, rgb2lab, set_deterministic
 
 import kornia as K
 

@@ -15,7 +15,7 @@ We test our model on aerial images of the DroneVeichle dataset containing RGB-IR
 The proposed approach produces a more accurate translation with respect to other state-of-the-art image translation models.
 
 ### Model Architecture :clapper:
-![Architecture](StawGAN-Pagina-1.png)
+![Architecture](StawGAN_arch.png)
 
 ### Results :bar_chart:
 | Model                                    | FID :arrow_down:      | IS :arrow_up:         | PSNR :arrow_up:     | SSIM :arrow_up:    |

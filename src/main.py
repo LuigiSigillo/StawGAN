@@ -2,11 +2,11 @@ import argparse
 import random
 import numpy as np
 import torch
-from metrics import evaluation
-import train
+from src.metrics import evaluation
+import src.train as train
 import train_kaist
-from utils import set_deterministic
-from sample import sample
+from src.utils import set_deterministic
+from src.sample import sample
 
 
 def check_errors(args):
