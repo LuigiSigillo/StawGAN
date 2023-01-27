@@ -15,10 +15,14 @@ We test our model on aerial images of the DroneVeichle dataset containing RGB-IR
 The proposed approach produces a more accurate translation with respect to other state-of-the-art image translation models.
 
 ### Model Architecture :clapper:
-<img src=".png">
+<object data="" type="application/pdf" width="700px" height="700px">
+    <embed src="">
+        <p>This browser does not support PDFs. Please download the PDF to view it: <a href="">Download PDF</a>.</p>
+    </embed>
+</object>
 
 ### Results :bar_chart:
-| Model                                    | FID$\downarrow$      | IS$\uparrow$         | PSNR$\uparrow$        | SSIM$\uparrow$       |
+| Model                                    | FID :arrow_down:      | IS :arrow_up:         | PSNR :arrow_up:     | SSIM :arrow_up:    |
 |------------------------------------------|----------------------|----------------------|-----------------------|----------------------|
 | pix2pixHD| $\mathbf{0.0259}$    | $4.2223$             | $11.2101$             | $0.2125$             |
 | StarGAN v2       | $0.4476	$            | $2.7190$             | $11.2211$             | $\underline{0.2297}$ |
