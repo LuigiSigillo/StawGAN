@@ -1,7 +1,7 @@
 # StawGAN: Structural-Aware Generative Adversarial Networks for Infrared Image Translation
 Official PyTorch repository for StawGAN: Structural-Aware Generative Adversarial Networks for Infrared Image Translation, ISCAS 2023
 
-[[IEEEXplore]()][[ArXiv preprint](https://arxiv.org/abs/2305.10882)]
+[[IEEEXplore](https://ieeexplore.ieee.org/document/10181838)][[ArXiv preprint](https://arxiv.org/abs/2305.10882)]
 
 Luigi Sigillo, Eleonora Grassucci, and Danilo Comminiello
 
@@ -30,7 +30,15 @@ First, please install the requirements:
 Please cite our work if you found it useful:
 
 ```
-@INPROCEEDINGS{9892119,}
+@INPROCEEDINGS{10181838,
+  author={Sigillo, Luigi and Grassucci, Eleonora and Comminiello, Danilo},
+  booktitle={2023 IEEE International Symposium on Circuits and Systems (ISCAS)}, 
+  title={StawGAN: Structural-Aware Generative Adversarial Networks for Infrared Image Translation}, 
+  year={2023},
+  volume={},
+  number={},
+  pages={1-5},
+  doi={10.1109/ISCAS46773.2023.10181838}}
 ```
 
 
