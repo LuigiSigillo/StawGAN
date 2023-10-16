@@ -1,11 +1,11 @@
 # StawGAN: Structural-Aware Generative Adversarial Networks for Infrared Image Translation
 Official PyTorch repository for StawGAN: Structural-Aware Generative Adversarial Networks for Infrared Image Translation, ISCAS 2023
 
-[[IEEEXplore]()][[ArXiv preprint]()]
+[[IEEEXplore]()][[ArXiv preprint](https://arxiv.org/abs/2305.10882)]
 
 Luigi Sigillo, Eleonora Grassucci, and Danilo Comminiello
 
-[![PWC]()]()
+The link to the website presentation is [BlogPost](https://ispamm.github.io/StawGAN-page/)
 
 ### Abstract :bookmark_tabs:
 
@@ -16,15 +16,6 @@ The proposed approach produces a more accurate translation with respect to other
 
 ### Model Architecture :clapper:
 ![Architecture](StawGAN_arch.png)
-
-### Results :bar_chart:
-| Model                                    | FID :arrow_down:      | IS :arrow_up:         | PSNR :arrow_up:     | SSIM :arrow_up:    |
-|------------------------------------------|----------------------|----------------------|-----------------------|----------------------|
-| pix2pixHD| $\mathbf{0.0259}$    | $4.2223$             | $11.2101$             | $0.2125$             |
-| StarGAN v2       | $0.4476	$            | $2.7190$             | $11.2211$             | $\underline{0.2297}$ |
-| PearlGAN                   | $0.0743$             | $3.9441$             | $10.8925$             | $0.2046$             |
-| TarGAN            | $0.1177$             | $\underline{4.3441}$ | $\underline{11.7085}$ | $0.2382$             |
-| StawGAN                                  | $\underline{0.0111}$ | $\mathbf{4.4445}$    | $\mathbf{11.8251}$    | $\mathbf{0.2453}$    |
 
 ### How to run experiments :computer:
 
