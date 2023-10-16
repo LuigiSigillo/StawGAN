@@ -1,3 +1,5 @@
+![visitors](https://visitor-badge.laobi.icu/badge?page_id=luigisigillo/StawGAN)
+
 # StawGAN: Structural-Aware Generative Adversarial Networks for Infrared Image Translation
 Official PyTorch repository for StawGAN: Structural-Aware Generative Adversarial Networks for Infrared Image Translation, ISCAS 2023
 
