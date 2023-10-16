@@ -2,11 +2,11 @@ import argparse
 import random
 import numpy as np
 import torch
-from src.metrics import evaluation
-import src.train as train
+from metrics import evaluation
+import train as train
 import train_kaist
-from src.utils import set_deterministic
-from src.sample import sample
+from utils import set_deterministic
+from sample import sample
 
 
 def check_errors(args):
@@ -40,8 +40,8 @@ def tuple_type(strings):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-mode', type=str, default='train')
-    parser.add_argument('-dataset', type=str, default='droneveichle')
-    parser.add_argument('-dataset_path', type=str, default='dataset')
+    parser.add_argument('-dataset', type=str, default='visDrone')
+    parser.add_argument('-dataset_path', type=str, default=r'C:\Users\ispamm-lab\Documents\TarGAN_Drone\dataset\visDrone')
     parser.add_argument('-sample_dir', type=str, default='sample')
     parser.add_argument('-experiment_name', type=str, default='testing')
     parser.add_argument('-eval_dir', type=str, default='results')
@@ -54,9 +54,9 @@ if __name__ == '__main__':
     parser.add_argument('-img_size', type=int, default=256)
     parser.add_argument('-epoch', type=int, default=50)
     parser.add_argument('-sepoch', type=int, default=0)
-    parser.add_argument("-preloaded_data", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
-    parser.add_argument('-tensors_path', type=str, default='/tensors/tensors_nodark')
-    parser.add_argument("-preloaded_data_eval", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
+    parser.add_argument("-preloaded_data", type=str2bool, nargs='?', const=True, default=True, help="Activate nice mode.")
+    parser.add_argument('-tensors_path', type=str, default=r'C:\Users\ispamm-lab\Documents\TarGAN_Drone\dataset\visDrone\tensors\tensors_nodark')
+    parser.add_argument("-preloaded_data_eval", type=str2bool, nargs='?', const=True, default=True, help="Activate nice mode.")
     parser.add_argument("-pretrained_generator", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
     parser.add_argument("-color_images", type=str2bool, nargs='?', const=True, default=True, help="Activate nice mode.")
     parser.add_argument("-lab", type=str2bool, nargs='?', const=True, default=False, help="Activate nice mode.")
@@ -113,7 +113,7 @@ if __name__ == '__main__':
         if "debug" in args.mode:
             # args.img_size = 128
             args.preloaded_data = False
-        if args.dataset=="droneveichle":
+        if args.dataset=="visDrone":
             train.train(args)
         else:
             train_kaist.train(args)

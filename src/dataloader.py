@@ -13,7 +13,7 @@ import torchvision as tv
 import random 
 from tqdm import tqdm
 from torchvision import transforms
-from src.utils import denorm, label2onehot, rgb2lab, set_deterministic
+from utils import denorm, label2onehot, rgb2lab, set_deterministic
 
 import kornia as K
 
@@ -124,9 +124,9 @@ class DroneVeichleDataset(Dataset):
             self.classes =classes
             box = (100, 100, 740, 612)
             self.img_size = img_size
-            fold = split + "/"
-            path1 = os.path.join(path, fold+ split+modals[0])
-            path2 = os.path.join(path, fold + split+modals[1])
+            fold = split # + "/"
+            path1 = os.path.join(path, fold,split+modals[0])
+            path2 = os.path.join(path, fold ,split+modals[1])
             list_path = sorted([os.path.join(path1, x) for x in os.listdir(path1)]) + sorted([os.path.join(path2, x) for x in os.listdir(path2)])
             raw_path = [] #contains RGB image real
             # print(len(list_path), list_path[200])

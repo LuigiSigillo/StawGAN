@@ -11,12 +11,12 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import torch.nn.functional as F
 import wandb
-from src.dataloader import DefaultDataset, DroneVeichleDataset
-from src.models_quat import StyleEncoder
-from src.utils import get_style, getLabel, label2onehot, save_image, save_json
+from dataloader import DefaultDataset, DroneVeichleDataset
+from models_quat import StyleEncoder
+from utils import get_style, getLabel, label2onehot, save_image, save_json
 from PIL import Image
 
-from src.models import LPIPS, InceptionV3
+from models import LPIPS, InceptionV3
 import numpy as np
 import glob
 import cv2
@@ -33,7 +33,7 @@ def sample(args):
     in_c_gen = in_c+4 if args.wavelet_type != None else in_c
     in_c_gen = 1 if args.lab else in_c_gen
     in_c_gen = in_c_gen+6 if (args.classes[0] and not args.classes[1]) else in_c_gen
-    from src.models_quat import Generator
+    from models_quat import Generator
     netG = Generator(in_c=in_c_gen + args.c_dim, mid_c=args.G_conv, layers=2, s_layers=3, affine=True, last_ac=True,
                      colored_input=args.color_images, wav=args.wavelet_type,real=args.real, qsn=args.qsn, phm=args.phm, 
                      lab=args.lab, classes= args.classes, groupnorm=args.groupnorm).to(device)

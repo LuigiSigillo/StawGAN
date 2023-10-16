@@ -4,7 +4,6 @@ import torch.nn.functional as F
 import numpy as np
 bias = False
 from torchvision import models
-from wavelet import wavelet_wrapper
 
 device = "cuda" if torch.cuda.is_available() else "cpu" if torch.cuda.is_available() else "cpu"
 
@@ -151,8 +150,6 @@ class Generator(nn.Module):
     def forward(self, img, tumor=None, c=None, mode="train", wav_type=None):
         c = c.view(c.size(0), c.size(1), 1, 1)
         c = c.repeat(1, 1, img.size(2), img.size(3))
-        if wav_type != None:
-            img = torch.cat([img, create_wavelet_from_input_tensor(img, c, wav_type)], dim=1)
         img = torch.cat([img, c], dim=1)
 
         x_1 = self.img_encoder(img)
@@ -365,16 +362,4 @@ class InceptionV3(nn.Module):
         x = self.block3(x)
         x = self.block4(x)
         return x.view(x.size(0), -1)
-
-
-
-@torch.no_grad()
-def create_wavelet_from_input_tensor(inputs, mods, wav_type ):
-    modalities = ["ir" if mods[i][0].any()==1 else "rgb" if mods[i][1].any()==1 else "" for i in range(mods.size(0))]
-    # .permute(1, 2,0)
-    lst = [
-        torch.from_numpy(wavelet_wrapper(wav_type, chunk.squeeze().cpu().detach(), chunk.size(2), modalities[i])).type(torch.FloatTensor)
-        for i,chunk in enumerate(torch.split(inputs.detach(), 1, dim=0))
-        ]
-    return torch.stack(lst, dim=0).to(device)
 
